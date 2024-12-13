@@ -25,7 +25,8 @@ class Uzytkownik(db.Model):
     balans = db.Column(db.Decimal(8,2))
     rola = db.Column(db.String(50))
     status_weryfikacji = db.Column(db.bool)
-
+    
+    #przekształcamy obiekty na słownik bo łatiej potem rządania robić w formacie json
     def to_dict(self):
         return {
             'id_uzytkownika':self.id_uzytkownika,
@@ -48,6 +49,9 @@ def utworz_konto():
         if Uzytkownik.query.filter_by(email=data['email']).first():
             return jsonify({'error':'Email jest zajęty'}), 400
 
+        connection = db.session.connection()
+        connection.execution_options(isolation_level="READ COMMITED")
+        
         nowe_konto = Uzytkownik(
             nazwa=data['nazwa'],
             haslo=data['haslo'],
@@ -80,8 +84,6 @@ def pobierz_konta():
         return jsonify({'error': str(e)}), 500
         
 
-with app.app_context():
-    db.create_all()
 
 if __name__ == "__main__":
     app.run(debug=True)
