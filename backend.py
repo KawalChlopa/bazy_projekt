@@ -83,6 +83,25 @@ def pobierz_konta():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
         
+#API do usuwania konta
+@app.route("/api/konto/<int:id_uzytkownika>", methods=['DELETE'])
+def usun_konto(id_uzytkownika):
+    try:
+        konto = Uzytkownik.query.get(id_uzytkownika)
+        if not konto:
+            return jsonify({'error': 'Konto o podanym ID nie istnieje'}), 404
+
+        potwierdzenie = request.args.get('potwierdzenie', 'nie').lower()
+        if potwierdzenie != 'tak':
+            return jsonify({'error': 'Operacja wymaga potwierdzenia. Użyj parametru potwierdzenie=tak w żądaniu.'}), 400
+
+        db.session.delete(konto)
+        db.session.commit()
+
+        return jsonify({'message': 'Konto zostało pomyślnie usunięte'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500        
 
 
 if __name__ == "__main__":
