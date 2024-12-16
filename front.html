@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Użytkownik Frontend</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #fff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        input, button {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            background-color: #28a745;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #218838;
+        }
+
+        .error {
+            color: red;
+        }
+
+        .success {
+            color: green;
+        }
+
+        .konto {
+            border-bottom: 1px solid #ccc;
+            padding: 10px 0;
+        }
+
+        .konto:last-child {
+            border-bottom: none;
+        }
+
+        .delete-button {
+            background-color: #dc3545;
+            color: white;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .delete-button:hover {
+            background-color: #c82333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Tworzenie Konta</h1>
+        <form id="createAccountForm">
+            <input type="text" id="nazwa" placeholder="Nazwa" required>
+            <input type="password" id="haslo" placeholder="Hasło" required>
+            <input type="email" id="email" placeholder="Email" required>
+            <input type="number" id="balans" placeholder="Balans (opcjonalnie)" step="0.01">
+            <select id="rola">
+                <option value="Uzytkownik">Uzytkownik</option>
+                <option value="Admin">Admin</option>
+            </select>
+            <label>
+                <input type="checkbox" id="status_weryfikacji"> Zweryfikowany?
+            </label>
+            <button type="submit">Utwórz Konto</button>
+        </form>
+        <p id="formMessage" class="error"></p>
+
+        <h1>Lista Kont</h1>
+        <button id="refreshAccounts">Odśwież Listę Kont</button>
+        <div id="accountList"></div>
+    </div>
+
+    <script>
+        const apiBaseUrl = 'http://127.0.0.1:5000/api';
+
+        // Obsługa formularza tworzenia konta
+        document.getElementById('createAccountForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const nazwa = document.getElementById('nazwa').value;
+            const haslo = document.getElementById('haslo').value;
+            const email = document.getElementById('email').value;
+            const balans = parseFloat(document.getElementById('balans').value) || 0.0;
+            const rola = document.getElementById('rola').value;
+            const status_weryfikacji = document.getElementById('status_weryfikacji').checked;
+
+            const payload = {
+                nazwa,
+                haslo,
+                email,
+                balans,
+                rola,
+                status_weryfikacji
+            };
+
+            try {
+                const response = await fetch(`${apiBaseUrl}/konto`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+                const messageElement = document.getElementById('formMessage');
+
+                if (response.ok) {
+                    messageElement.textContent = data.message;
+                    messageElement.className = 'success';
+                    document.getElementById('createAccountForm').reset();
+                    fetchAccounts(); // Aktualizacja listy kont po utworzeniu nowego
+                } else {
+                    messageElement.textContent = data.error;
+                    messageElement.className = 'error';
+                }
+            } catch (error) {
+                console.error('Błąd:', error);
+            }
+        });
+
+       // Pobieranie listy kont
+        async function fetchAccounts() {
+            try {
+                const response = await fetch(`${apiBaseUrl}/konto`);
+                const data = await response.json();
+
+                const accountList = document.getElementById('accountList');
+                accountList.innerHTML = ''; // Wyczyszczenie listy przed wyświetleniem nowych danych
+
+                if (Array.isArray(data)) {
+                    data.forEach((konto) => {
+                        const div = document.createElement('div');
+                        div.className = 'konto';
+                        div.innerHTML = `
+                            <p><strong>Nazwa:</strong> ${konto.nazwa}</p>
+                            <p><strong>Email:</strong> ${konto.email}</p>
+                            <p><strong>Balans:</strong> ${konto.balans}</p>
+                            <p><strong>Rola:</strong> ${konto.rola}</p>
+                            <p><strong>Status Weryfikacji:</strong> ${konto.status_weryfikacji ? 'Tak' : 'Nie'}</p>
+                            <button class="delete-button" data-id="${konto.id_uzytkownika}">Usuń</button>
+                        `;
+                        accountList.appendChild(div);
+                    });
+
+                    // Obsługa przycisku usuwania konta
+                    document.querySelectorAll('.delete-button').forEach((button) => {
+                        button.addEventListener('click', () => deleteAccount(button.dataset.id));
+                    });
+                } else {
+                    accountList.innerHTML = '<p class="error">Nie znaleziono kont.</p>';
+                }
+            } catch (error) {
+                console.error('Błąd podczas pobierania kont:', error);
+                document.getElementById('accountList').innerHTML = `<p class="error">Błąd pobierania danych.</p>`;
+            }
+        }
+
+
+                    
+
+        // Funkcja usuwania konta
+        async function deleteAccount(id_uzytkownika) {
+            const confirmation = confirm('Czy na pewno chcesz usunąć to konto?');
+            if (!confirmation) return;
+
+            try {
+                const response = await fetch(`${apiBaseUrl}/konto/${id_uzytkownika}?potwierdzenie=tak`, {
+                    method: 'DELETE',
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    alert(data.message);
+                    fetchAccounts(); // Aktualizacja listy kont po usunięciu
+                } else {
+                    alert(data.error);
+                }
+            } catch (error) {
+                console.error('Błąd podczas usuwania konta:', error);
+                alert('Wystąpił błąd podczas usuwania konta.');
+            }
+        }
+
+        // Obsługa przycisku odświeżania listy kont
+        document.getElementById('refreshAccounts').addEventListener('click', fetchAccounts);
+
+        // Pobranie listy kont na początku
+        fetchAccounts();
+    </script>
+</body>
+</html>
