@@ -99,7 +99,7 @@ CREATE TABLE `Historia Salda`(
     `id_transakcji` BIGINT NOT NULL
 );
 ALTER TABLE
-    `Historia Salda` ADD CONSTRAINT `historia salda_id_transakcji_foreign` FOREIGN KEY(`id_transakcji`) REFERENCES `Tansakcje`(`id`);
+    `Historia Salda` ADD CONSTRAINT `historia salda_id_transakcji_foreign` FOREIGN KEY(`id_transakcji`) REFERENCES `Transakcje`(`id`);
 ALTER TABLE
     `Zdarzenia w meczu` ADD CONSTRAINT `zdarzenia w meczu_id_zawodnika_foreign` FOREIGN KEY(`id_zawodnika`) REFERENCES `Zawodnicy`(`id_zawodnika`);
 ALTER TABLE

@@ -3,6 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+import bcrypt
 
 app = Flask(__name__)
 CORS(app)
@@ -65,9 +66,11 @@ def utworz_konto():
             print(f"Znaleziono istniejącego użytkownika: {existing_user.to_dict()}")
             return jsonify({'error':'Użytkownik o takiej nazwie już istnieje'}), 400
         
+        hashed_password = hash_password(data['haslo'])
+
         nowe_konto = Uzytkownik(
             nazwa=data['nazwa'],
-            haslo=data['haslo'],
+            haslo=hashed_password,
             email=data['email'],
             balans=Decimal(str(data.get('balans', 0.0))), 
             rola=data.get('rola', 'Uzytkownik'),
@@ -118,6 +121,16 @@ def usun_konto(id_uzytkownika):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500 
+
+#Funkcja tworząca hash hasła
+def hash_password(haslo):
+    salt = bcrypt.gensalt()
+    hashed_password = bcrypt.hashpw(haslo.encode('utf-8'), salt)
+    return hashed_password.decode('utf-8')
+
+#Sprawdza poprawność hasła
+def veryfy_password(haslo, hashed_password):
+    return bcrypt.checkpw(haslo.encode('utf-8'), hashed_password.encode('utf-8'))
 
 
 if __name__ == "__main__":
