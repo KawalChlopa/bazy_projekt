@@ -1,143 +1,169 @@
 from flask import Flask, request, jsonify
 from datetime import datetime
 from decimal import Decimal
-from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import bcrypt
+import mysql.connector
 
 app = Flask(__name__)
 CORS(app)
 
-#MySQL
+#Tutaj parametry do łączenia się z bazą w razie jakby był potrzebny to jest też port
 USER = "root"
 PASSWORD = "bazy123"
 HOST = "localhost"
 DATABASE = "Bukmacher"
 PORT = "3306"
 
-app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DATABASE}'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+#łączenie z bazą
+def get_db_connection():
+    return mysql.connector.connect(
+        host=HOST,
+        user=USER,
+        password=PASSWORD,
+        database=DATABASE
+    )
 
-db = SQLAlchemy(app)
-
+#sprawdzanie łączności
 def test_db_connection():
-    with app.app_context():  # Tworzymy kontekst aplikacji
-        try:
-            with db.engine.connect() as connection:
-                print("Połączenie z bazą danych jest aktywne.")
-                return True
-        except Exception as e:
-            print(f"Błąd połączenia z bazą danych: {str(e)}")
-            return False
+    try:
+        conn = get_db_connection()
+        conn.close()
+        print("Połączenie z bazą danych jest aktywne.")
+        return True
+    except Exception as e:
+        print(f"Błąd połączenia z bazą danych: {str(e)}")
+        return False
 
-class Uzytkownik(db.Model):
-    __tablename__ = 'Uzytkownik'
-    id_uzytkownika = db.Column(db.Integer, primary_key=True)
-    nazwa = db.Column(db.String(50))
-    haslo = db.Column(db.String(50))
-    email = db.Column(db.String(50))
-    balans = db.Column(db.Numeric(8,2))
-    data_utworzenia = db.Column(db.DateTime)
-    rola = db.Column(db.String(50))
-    status_weryfikacji = db.Column(db.Boolean)
-    
-    #przekształcamy obiekty na słownik bo łatiej potem rządania robić w formacie json
+#Klasa użytkownik zrobiomy obiekrowo żeby było bardziej przejrzyście
+class Uzytkownik:
+    def __init__(self, id_uzytkownika=None, nazwa=None, haslo=None, email=None, balans=0.0, data_utworzenia=None, rola='Uzytkownik', status_weryfikacji=False):
+        self.id_uzytkownika = id_uzytkownika
+        self.nazwa = nazwa
+        self.haslo = haslo
+        self.email = email
+        self.balans = Decimal(str(balans))
+        self.data_utworzenia = data_utworzenia or datetime.now()
+        self.rola = rola
+        self.status_weryfikacji = status_weryfikacji
+
+    @staticmethod
+    def hash_password(haslo):
+        salt = bcrypt.gensalt()
+        hashed_password = bcrypt.hashpw(haslo.encode('utf-8'), salt)
+        return hashed_password.decode('utf-8')
+
+    @staticmethod
+    def verify_password(haslo, hashed_password):
+        return bcrypt.checkpw(haslo.encode('utf-8'), hashed_password.encode('utf-8'))
+
+    #pobiera liste wsyzsktich użytkowników
+    @staticmethod
+    def get_all_users():
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM Uzytkownik")
+            users = cursor.fetchall()
+            return [Uzytkownik(**user) for user in users]
+        finally:
+            cursor.close()
+            conn.close()
+
+    def save(self):
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO Uzytkownik (nazwa, haslo, email, balans, data_utworzenia, rola, status_weryfikacji) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (self.nazwa, self.hash_password(self.haslo), self.email, self.balans, self.data_utworzenia, self.rola, self.status_weryfikacji)
+            )
+            conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
+
+    #pobiera użytkownika po id
+    @staticmethod
+    def get_by_id(user_id):
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM Uzytkownik WHERE id_uzytkownika = %s", (user_id,))
+            user = cursor.fetchone()
+            return Uzytkownik(**user) if user else None
+        finally:
+            cursor.close()
+            conn.close()
+
+    def delete(self):
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM Uzytkownik WHERE id_uzytkownika = %s", (self.id_uzytkownika,))
+            conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
+
+    #Zamienia na słonik żeby łatwiej było operować na danych podawanych przez api
     def to_dict(self):
         return {
-            'id_uzytkownika':self.id_uzytkownika,
-            'nazwa':self.nazwa,
-            'haslo':self.haslo,
-            'email':self.email,
-            'balans':self.balans,
+            'id_uzytkownika': self.id_uzytkownika,
+            'nazwa': self.nazwa,
+            'haslo': self.haslo,
+            'email': self.email,
+            'balans': str(self.balans),
             'data_utworzenia': self.data_utworzenia.isoformat() if self.data_utworzenia else None,
-            'rola':self.rola,
-            'status_weryfikacji':self.status_weryfikacji
-
+            'rola': self.rola,
+            'status_weryfikacji': self.status_weryfikacji
         }
 
-#API do tworzenia konta
+#Poza klasą bo flaskowe api tego wymaga żeby być dostępne globalnie
 @app.route("/api/konto", methods=['POST'])
-def utworz_konto():
+def createAccount():
     data = request.json
-    print("Otrzymane dane:", data)
     try:
-        existing_user = Uzytkownik.query.filter_by(nazwa=data['nazwa']).first()
-        if existing_user:
-            print(f"Znaleziono istniejącego użytkownika: {existing_user.to_dict()}")
-            return jsonify({'error':'Użytkownik o takiej nazwie już istnieje'}), 400
-        
-        hashed_password = hash_password(data['haslo'])
+        if Uzytkownik.get_by_id(data['nazwa']):
+            return jsonify({'error': 'Użytkownik o takiej nazwie już istnieje'}), 400
 
         nowe_konto = Uzytkownik(
             nazwa=data['nazwa'],
-            haslo=hashed_password,
+            haslo=data['haslo'],
             email=data['email'],
-            balans=Decimal(str(data.get('balans', 0.0))), 
+            balans=data.get('balans', 0.0),
             rola=data.get('rola', 'Uzytkownik'),
-            data_utworzenia=datetime.now(),
             status_weryfikacji=data.get('status_weryfikacji', False)
         )
-        
-        print("Próba dodania konta:", nowe_konto.to_dict())
-        db.session.add(nowe_konto)
-        db.session.commit()
-        print("Konto zostało zapisane")
-        
-        return jsonify({
-            'message':'Konto zostało pomyślnie utworzone',
-            'konto': nowe_konto.to_dict()
-        }), 201
-    
+        nowe_konto.save()
+        return jsonify({'message': 'Konto zostało pomyślnie utworzone', 'konto': nowe_konto.to_dict()}), 201
     except Exception as e:
-        print(f"Błąd podczas tworzenia konta: {str(e)}")
-        print(f"Typ błędu: {type(e)}")
-        db.session.rollback()
         return jsonify({'error': str(e)}), 500
-    
+
 @app.route("/api/konto", methods=['GET'])
-def pobierz_konta():
+def getAccount():
     try:
-        konta=Uzytkownik.query.all()
-        return jsonify([konto.to_dict() for konto in konta])
+        users = Uzytkownik.get_all_users()
+        return jsonify([user.to_dict() for user in users])
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-        
-#API do usuwania konta
+
+
 @app.route("/api/konto/<int:id_uzytkownika>", methods=['DELETE'])
-def usun_konto(id_uzytkownika):
+def deleteAccount(id_uzytkownika):
     try:
-        konto = Uzytkownik.query.get(id_uzytkownika)
+        konto = Uzytkownik.get_by_id(id_uzytkownika)
         if not konto:
             return jsonify({'error': 'Konto o podanym ID nie istnieje'}), 404
-
-        potwierdzenie = request.args.get('potwierdzenie', 'nie').lower()
-        if potwierdzenie != 'tak':
-            return jsonify({'error': 'Operacja wymaga potwierdzenia. Użyj parametru potwierdzenie=tak w żądaniu.'}), 400
-
-        db.session.delete(konto)
-        db.session.commit()
-
+        konto.delete()
         return jsonify({'message': 'Konto zostało pomyślnie usunięte'}), 200
     except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500 
-
-#Funkcja tworząca hash hasła
-def hash_password(haslo):
-    salt = bcrypt.gensalt()
-    hashed_password = bcrypt.hashpw(haslo.encode('utf-8'), salt)
-    return hashed_password.decode('utf-8')
-
-#Sprawdza poprawność hasła
-def veryfy_password(haslo, hashed_password):
-    return bcrypt.checkpw(haslo.encode('utf-8'), hashed_password.encode('utf-8'))
-
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == "__main__":
-    #Sprawdzenie połączenia z bazą danych
-    with app.app_context():  
-        if test_db_connection():
-            print("Połączenie z bazą danych zostało ustanowione pomyślnie.")
-            app.run(debug=True)
-        else:
-            print("Nie udało się połączyć z bazą danych.")
+    if test_db_connection():
+        print("Połączenie z bazą danych zostało ustanowione pomyślnie.")
+        app.run(debug=True)
+    else:
+        print("Nie udało się połączyć z bazą danych.")
