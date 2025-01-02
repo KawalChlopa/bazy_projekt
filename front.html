@@ -1,224 +1,121 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Użytkownik Frontend</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f4f4f9;
-            color: #333;
-        }
-
-        .container {
-            max-width: 800px;
-            margin: 20px auto;
-            padding: 20px;
-            background: #fff;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            border-radius: 8px;
-        }
-
-        h1 {
-            text-align: center;
-        }
-
-        form {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        input, button {
-            padding: 10px;
-            font-size: 16px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-
-        button {
-            background-color: #28a745;
-            color: white;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background-color: #218838;
-        }
-
-        .error {
-            color: red;
-        }
-
-        .success {
-            color: green;
-        }
-
-        .konto {
-            border-bottom: 1px solid #ccc;
-            padding: 10px 0;
-        }
-
-        .konto:last-child {
-            border-bottom: none;
-        }
-
-        .delete-button {
-            background-color: #dc3545;
-            color: white;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-
-        .delete-button:hover {
-            background-color: #c82333;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wyszukiwarka Meczów</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f7f7f7;
+    }
+    .container {
+      max-width: 600px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    h1 {
+      text-align: center;
+    }
+    .search-box {
+      display: flex;
+      margin-bottom: 20px;
+    }
+    .search-box input {
+      flex: 1;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid #ddd;
+      border-radius: 5px 0 0 5px;
+    }
+    .search-box button {
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 0 5px 5px 0;
+    }
+    .search-box button:hover {
+      background-color: #0056b3;
+    }
+    .error {
+      color: red;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .results {
+      margin-top: 20px;
+    }
+    .match-card {
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 10px;
+      margin-bottom: 10px;
+      background-color: #fafafa;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Tworzenie Konta</h1>
-        <form id="createAccountForm">
-            <input type="text" id="nazwa" placeholder="Nazwa" required>
-            <input type="password" id="haslo" placeholder="Hasło" required>
-            <input type="email" id="email" placeholder="Email" required>
-            <input type="number" id="balans" placeholder="Balans (opcjonalnie)" step="0.01">
-            <select id="rola">
-                <option value="Uzytkownik">Uzytkownik</option>
-                <option value="Admin">Admin</option>
-            </select>
-            <label>
-                <input type="checkbox" id="status_weryfikacji"> Zweryfikowany?
-            </label>
-            <button type="submit">Utwórz Konto</button>
-        </form>
-        <p id="formMessage" class="error"></p>
-
-        <h1>Lista Kont</h1>
-        <button id="refreshAccounts">Odśwież Listę Kont</button>
-        <div id="accountList"></div>
+  <div class="container">
+    <h1>Wyszukiwarka Meczów</h1>
+    <div class="search-box">
+      <input type="text" id="searchQuery" placeholder="Wpisz nazwę drużyny...">
+      <button onclick="searchMatches()">Szukaj</button>
     </div>
+    <div class="error" id="error"></div>
+    <div class="results" id="results"></div>
+  </div>
 
-    <script>
-        const apiBaseUrl = 'http://127.0.0.1:5000/api';
+  <script>
+    async function searchMatches() {
+      const searchQuery = document.getElementById('searchQuery').value.trim();
+      const errorDiv = document.getElementById('error');
+      const resultsDiv = document.getElementById('results');
 
-        // Obsługa formularza tworzenia konta
-        document.getElementById('createAccountForm').addEventListener('submit', async (event) => {
-            event.preventDefault();
+      errorDiv.textContent = '';
+      resultsDiv.innerHTML = '';
 
-            const nazwa = document.getElementById('nazwa').value;
-            const haslo = document.getElementById('haslo').value;
-            const email = document.getElementById('email').value;
-            const balans = parseFloat(document.getElementById('balans').value) || 0.0;
-            const rola = document.getElementById('rola').value;
-            const status_weryfikacji = document.getElementById('status_weryfikacji').checked;
+      if (!searchQuery) {
+        errorDiv.textContent = 'Wprowadź zapytanie wyszukiwania.';
+        return;
+      }
 
-            const payload = {
-                nazwa,
-                haslo,
-                email,
-                balans,
-                rola,
-                status_weryfikacji
-            };
+      try {
+        const response = await fetch(`http://localhost:5000/api/konto/find_match?search=${encodeURIComponent(searchQuery)}`);
+        if (!response.ok) {
+          throw new Error('Błąd podczas pobierania danych z serwera.');
+        }
 
-            try {
-                const response = await fetch(`${apiBaseUrl}/konto`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
+        const matches = await response.json();
 
-                const data = await response.json();
-                const messageElement = document.getElementById('formMessage');
+        if (matches.length === 0) {
+          resultsDiv.innerHTML = '<p>Brak wyników do wyświetlenia.</p>';
+          return;
+        }
 
-                if (response.ok) {
-                    messageElement.textContent = data.message;
-                    messageElement.className = 'success';
-                    document.getElementById('createAccountForm').reset();
-                    fetchAccounts(); // Aktualizacja listy kont po utworzeniu nowego
-                } else {
-                    messageElement.textContent = data.error;
-                    messageElement.className = 'error';
-                }
-            } catch (error) {
-                console.error('Błąd:', error);
-            }
+        matches.forEach(match => {
+          const matchCard = document.createElement('div');
+          matchCard.className = 'match-card';
+          matchCard.innerHTML = `
+            <h3>${match.gospodarz} vs ${match.gosc}</h3>
+            <p>Data meczu: ${new Date(match.data_meczu).toLocaleString()}</p>
+            <p>Gole: ${match.gole_gospodarzy} - ${match.gole_gosci}</p>
+            <p>Status: ${match.status}</p>
+            <p>Podobieństwo: ${(match.similarity * 100).toFixed(2)}%</p>
+          `;
+          resultsDiv.appendChild(matchCard);
         });
-
-       // Pobieranie listy kont
-        async function fetchAccounts() {
-            try {
-                const response = await fetch(`${apiBaseUrl}/konto`);
-                const data = await response.json();
-
-                const accountList = document.getElementById('accountList');
-                accountList.innerHTML = ''; // Wyczyszczenie listy przed wyświetleniem nowych danych
-
-                if (Array.isArray(data)) {
-                    data.forEach((konto) => {
-                        const div = document.createElement('div');
-                        div.className = 'konto';
-                        div.innerHTML = `
-                            <p><strong>Nazwa:</strong> ${konto.nazwa}</p>
-                            <p><strong>Email:</strong> ${konto.email}</p>
-                            <p><strong>Balans:</strong> ${konto.balans}</p>
-                            <p><strong>Rola:</strong> ${konto.rola}</p>
-                            <p><strong>Status Weryfikacji:</strong> ${konto.status_weryfikacji ? 'Tak' : 'Nie'}</p>
-                            <button class="delete-button" data-id="${konto.id_uzytkownika}">Usuń</button>
-                        `;
-                        accountList.appendChild(div);
-                    });
-
-                    // Obsługa przycisku usuwania konta
-                    document.querySelectorAll('.delete-button').forEach((button) => {
-                        button.addEventListener('click', () => deleteAccount(button.dataset.id));
-                    });
-                } else {
-                    accountList.innerHTML = '<p class="error">Nie znaleziono kont.</p>';
-                }
-            } catch (error) {
-                console.error('Błąd podczas pobierania kont:', error);
-                document.getElementById('accountList').innerHTML = `<p class="error">Błąd pobierania danych.</p>`;
-            }
-        }
-
-
-                    
-
-        // Funkcja usuwania konta
-        async function deleteAccount(id_uzytkownika) {
-            const confirmation = confirm('Czy na pewno chcesz usunąć to konto?');
-            if (!confirmation) return;
-
-            try {
-                const response = await fetch(`${apiBaseUrl}/konto/${id_uzytkownika}?potwierdzenie=tak`, {
-                    method: 'DELETE',
-                });
-
-                const data = await response.json();
-                if (response.ok) {
-                    alert(data.message);
-                    fetchAccounts(); // Aktualizacja listy kont po usunięciu
-                } else {
-                    alert(data.error);
-                }
-            } catch (error) {
-                console.error('Błąd podczas usuwania konta:', error);
-                alert('Wystąpił błąd podczas usuwania konta.');
-            }
-        }
-
-        // Obsługa przycisku odświeżania listy kont
-        document.getElementById('refreshAccounts').addEventListener('click', fetchAccounts);
-
-        // Pobranie listy kont na początku
-        fetchAccounts();
-    </script>
+      } catch (error) {
+        errorDiv.textContent = 'Wystąpił błąd podczas wyszukiwania meczów.';
+      }
+    }
+  </script>
 </body>
 </html>

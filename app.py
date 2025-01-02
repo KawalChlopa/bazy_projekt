@@ -4,6 +4,7 @@ from decimal import Decimal
 from flask_cors import CORS
 import bcrypt
 import mysql.connector
+from difflib import SequenceMatcher
 
 app = Flask(__name__)
 CORS(app)
@@ -167,3 +168,67 @@ if __name__ == "__main__":
         app.run(debug=True)
     else:
         print("Nie udało się połączyć z bazą danych.")
+
+#Funckcja do szukania meczów po nazwie częscie nazwy itp
+@app.route('/api/konto/find_match', methods=['GET'])
+def find_match():
+
+    print("Endpoint /api/konto/find_match został wywołany")
+    search_query = request.args.get('search', '')
+    print(f"Zapytanie wyszukiwania: {search_query}")
+    
+    if not search_query:
+        return jsonify({'error': 'Nie wpisano żadnego zapytania'}), 400
+
+    search_terms = search_query.strip().split()
+    
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(dictionary=True) as cursor:
+                base_query = """
+                SELECT DISTINCT
+                    mecz.id_meczu,
+                    druzyna_gospodarz.nazwa AS gospodarz,
+                    druzyna_gosc.nazwa AS gosc,
+                    mecz.data_meczu,
+                    mecz.gole_gospodarzy,
+                    mecz.gole_gosci,
+                    mecz.status
+                FROM Mecz mecz
+                JOIN Druzyny druzyna_gospodarz ON mecz.id_gospodarzy = druzyna_gospodarz.id_druzyny
+                JOIN Druzyny druzyna_gosc ON mecz.id_gosci = druzyna_gosc.id_druzyny
+                WHERE """
+                
+                if len(search_terms) == 1:
+                    query = base_query + "(druzyna_gospodarz.nazwa LIKE %s OR druzyna_gosc.nazwa LIKE %s)"
+                    cursor.execute(query, (f"%{search_terms[0]}%", f"%{search_terms[0]}%"))
+                else:
+                    conditions = []
+                    params = []
+                    for term in search_terms:
+                        conditions.append("(druzyna_gospodarz.nazwa LIKE %s OR druzyna_gosc.nazwa LIKE %s)")
+                        params.extend([f"%{term}%", f"%{term}%"])
+                    query = base_query + " AND ".join(conditions)
+                    cursor.execute(query, tuple(params))
+
+                matches = cursor.fetchall()
+
+                def similarity(s1, s2):
+                    return SequenceMatcher(None, s1.lower(), s2.lower()).ratio()
+
+                filtered_matches = []
+                for match in matches:
+                    score = max(
+                        max(similarity(term, match['gospodarz']) for term in search_terms),
+                        max(similarity(term, match['gosc']) for term in search_terms)
+                    )
+                    if score > 0.6: 
+                        match['similarity'] = score
+                        filtered_matches.append(match)
+
+                return jsonify(sorted(filtered_matches, key=lambda x: x['similarity'], reverse=True))
+                
+    except mysql.connector.Error as err:
+        return jsonify({'error': 'Błąd bazy danych'}), 500
+    except Exception as e:
+        return jsonify({'error': 'Błąd'}), 500
