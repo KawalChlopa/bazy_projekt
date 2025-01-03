@@ -232,3 +232,76 @@ def find_match():
         return jsonify({'error': 'Błąd bazy danych'}), 500
     except Exception as e:
         return jsonify({'error': 'Błąd'}), 500
+
+
+
+#-------------------------------------------------------------
+#STAWIANIE ZAKŁADÓW, NIE WIEM CZY DZIAŁA, TRZEBA POTESTOWAĆ XD
+
+@app.route("/api/zaklad", methods=["POST"])
+def postawZaklad():
+    data = request.json
+    try:
+        # Pobierz dane zakładu
+        id_uzytkownika = data["id_uzytkownika"]
+        id_meczu = data["id_meczu"]
+        typ = data["typ"]  # Typ zakładu (np. 1 - gospodarze, 2 - goście)
+        kwota_postawiona = Decimal(str(data["kwota_postawiona"]))
+
+        # Sprawdź, czy użytkownik istnieje
+        uzytkownik = Uzytkownik.get_by_id(id_uzytkownika)
+        if not uzytkownik:
+            return jsonify({"error": "Użytkownik nie istnieje"}), 404
+
+        # Sprawdź balans użytkownika
+        if uzytkownik.balans < kwota_postawiona:
+            return jsonify({"error": "Brak wystarczających środków na koncie"}), 400
+
+        # Sprawdź, czy mecz istnieje
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM Mecz WHERE id_meczu = %s", (id_meczu,))
+        mecz = cursor.fetchone()
+        if not mecz:
+            return jsonify({"error": "Mecz nie istnieje"}), 404
+
+        # Pobierz mnożnik typu zakładu
+        cursor.execute("SELECT mnoznik FROM `Typ zakladu` WHERE id = %s", (typ,))
+        typ_zakladu = cursor.fetchone()
+        if not typ_zakladu:
+            return jsonify({"error": "Nieprawidłowy typ zakładu"}), 400
+        mnoznik = typ_zakladu["mnoznik"]
+
+        # Oblicz potencjalną wygraną
+        potencjalna_wygrana = kwota_postawiona * Decimal(str(mnoznik))
+
+        # Zapisz zakład do bazy danych
+        cursor.execute(
+            "INSERT INTO Zaklad (id_uzytkownika, id_meczu, wynik, kwota_postawiona, potencjalna_wygrana, status_zakladu, data_postawienia, typ) "
+            "VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s)",
+            (id_uzytkownika, id_meczu, False, kwota_postawiona, potencjalna_wygrana, "Oczekujący", typ)
+        )
+        conn.commit()
+
+        # Zaktualizuj balans użytkownika
+        nowy_balans = uzytkownik.balans - kwota_postawiona
+        cursor.execute(
+            "UPDATE Uzytkownik SET balans = %s WHERE id_uzytkownika = %s",
+            (nowy_balans, id_uzytkownika)
+        )
+        conn.commit()
+
+        return jsonify({
+            "message": "Zakład został pomyślnie postawiony",
+            "nowy_balans": str(nowy_balans),
+            "potencjalna_wygrana": str(potencjalna_wygrana)
+        }), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
