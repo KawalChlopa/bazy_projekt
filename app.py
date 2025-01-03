@@ -242,22 +242,22 @@ def find_match():
 def postawZaklad():
     data = request.json
     try:
-        # Pobierz dane zakładu
+        #Pobierz dane zakładu
         id_uzytkownika = data["id_uzytkownika"]
         id_meczu = data["id_meczu"]
-        typ = data["typ"]  # Typ zakładu (np. 1 - gospodarze, 2 - goście)
+        typ = data["typ"] 
         kwota_postawiona = Decimal(str(data["kwota_postawiona"]))
 
-        # Sprawdź, czy użytkownik istnieje
+        #Sprawdź, czy użytkownik istnieje
         uzytkownik = Uzytkownik.get_by_id(id_uzytkownika)
         if not uzytkownik:
             return jsonify({"error": "Użytkownik nie istnieje"}), 404
 
-        # Sprawdź balans użytkownika
+        #Sprawdź bilans użytkownika
         if uzytkownik.balans < kwota_postawiona:
             return jsonify({"error": "Brak wystarczających środków na koncie"}), 400
 
-        # Sprawdź, czy mecz istnieje
+        #Sprawdź, czy mecz istnieje
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT * FROM Mecz WHERE id_meczu = %s", (id_meczu,))
@@ -265,17 +265,17 @@ def postawZaklad():
         if not mecz:
             return jsonify({"error": "Mecz nie istnieje"}), 404
 
-        # Pobierz mnożnik typu zakładu
+        #Pobierz kurs
         cursor.execute("SELECT mnoznik FROM `Typ zakladu` WHERE id = %s", (typ,))
         typ_zakladu = cursor.fetchone()
         if not typ_zakladu:
             return jsonify({"error": "Nieprawidłowy typ zakładu"}), 400
         mnoznik = typ_zakladu["mnoznik"]
 
-        # Oblicz potencjalną wygraną
+        #Potencjalna wygrana
         potencjalna_wygrana = kwota_postawiona * Decimal(str(mnoznik))
 
-        # Zapisz zakład do bazy danych
+        # Zapisz zakład
         cursor.execute(
             "INSERT INTO Zaklad (id_uzytkownika, id_meczu, wynik, kwota_postawiona, potencjalna_wygrana, status_zakladu, data_postawienia, typ) "
             "VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s)",
@@ -283,7 +283,7 @@ def postawZaklad():
         )
         conn.commit()
 
-        # Zaktualizuj balans użytkownika
+        # Zaktualizuj bilans użytkownika
         nowy_balans = uzytkownik.balans - kwota_postawiona
         cursor.execute(
             "UPDATE Uzytkownik SET balans = %s WHERE id_uzytkownika = %s",
