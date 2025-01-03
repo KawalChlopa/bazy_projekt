@@ -305,3 +305,81 @@ def postawZaklad():
             cursor.close()
         if conn:
             conn.close()
+
+#rozliczanie
+
+@app.route("/api/rozlicz_mecz", methods=["POST"])
+def rozliczMecz():
+    data = request.json
+    try:
+        id_meczu = data["id_meczu"]
+
+        #Sprawdź, czy mecz istnieje
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM Mecz WHERE id_meczu = %s", (id_meczu,))
+        mecz = cursor.fetchone()
+        if not mecz:
+            return jsonify({"error": "Mecz nie istnieje"}), 404
+
+        #Sprawdź wynik meczu
+        gole_gospodarzy = mecz["gole_gospodarzy"]
+        gole_gosci = mecz["gole_gosci"]
+        zwyciestwo_gospodarzy = gole_gospodarzy > gole_gosci
+        zwyciestwo_gosci = gole_gosci > gole_gospodarzy
+        remis = gole_gospodarzy == gole_gosci
+
+        #Zaktualizuj status meczu
+        status_meczu = "Zakończony"
+        cursor.execute(
+            "UPDATE Mecz SET zwyciestwo_gospodarzy = %s, zwyciestwo_gosci = %s, status = %s WHERE id_meczu = %s",
+            (zwyciestwo_gospodarzy, zwyciestwo_gosci, status_meczu, id_meczu)
+        )
+        conn.commit()
+
+        #Pobierz zakłady na ten mecz
+        cursor.execute("SELECT * FROM Zaklad WHERE id_meczu = %s", (id_meczu,))
+        zaklady = cursor.fetchall()
+
+        for zaklad in zaklady:
+            id_zakladu = zaklad["id_zakladu"]
+            id_uzytkownika = zaklad["id_uzytkownika"]
+            kwota_postawiona = zaklad["kwota_postawiona"]
+            potencjalna_wygrana = zaklad["potencjalna_wygrana"]
+            typ = zaklad["typ"]
+
+            wygrany = False
+            if typ == 1 and zwyciestwo_gospodarzy:  #Zakład na zwycięstwo gospodarzy
+                wygrany = True
+            elif typ == 2 and zwyciestwo_gosci:  # Zakład na zwycięstwo gości
+                wygrany = True
+            elif typ == 3 and remis:  # Zakład na remis
+                wygrany = True
+
+            # Aktualizacja zakładu i bilansu użytkownika
+            status_zakladu = "Wygrany" if wygrany else "Przegrany"
+            cursor.execute(
+                "UPDATE Zaklad SET wynik = %s, status_zakladu = %s WHERE id_zakladu = %s",
+                (wygrany, status_zakladu, id_zakladu)
+            )
+            if wygrany:
+                # Aktualizacja balansu użytkownika
+                cursor.execute(
+                    "UPDATE Uzytkownik SET balans = balans + %s WHERE id_uzytkownika = %s",
+                    (potencjalna_wygrana, id_uzytkownika)
+                )
+        conn.commit()
+
+        return jsonify({"message": "Mecz i zakłady zostały rozliczone pomyślnie"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+
