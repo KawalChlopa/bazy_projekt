@@ -165,7 +165,7 @@ def deleteAccount(id_uzytkownika):
 if __name__ == "__main__":
     if test_db_connection():
         print("Połączenie z bazą danych zostało ustanowione pomyślnie.")
-        app.run(debug=True)
+        #app.run(debug=True)
     else:
         print("Nie udało się połączyć z bazą danych.")
 
@@ -238,8 +238,10 @@ def find_match():
 #-------------------------------------------------------------
 #STAWIANIE ZAKŁADÓW, NIE WIEM CZY DZIAŁA, TRZEBA POTESTOWAĆ XD
 
-@app.route("/api/zaklad", methods=["POST"])
+@app.route("/api/zaklad", methods=["POST","OPTIONS"])
 def postawZaklad():
+    if request.method == "OPTIONS":
+        return '', 200
     data = request.json
     try:
         #Pobierz dane zakładu
@@ -317,6 +319,9 @@ def rozliczMecz():
         #Sprawdź, czy mecz istnieje
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+
+        #Rozpoczynamy transakcje
+        conn.start_transaction()
         cursor.execute("SELECT * FROM Mecz WHERE id_meczu = %s", (id_meczu,))
         mecz = cursor.fetchone()
         if not mecz:
@@ -368,11 +373,21 @@ def rozliczMecz():
                     "UPDATE Uzytkownik SET balans = balans + %s WHERE id_uzytkownika = %s",
                     (potencjalna_wygrana, id_uzytkownika)
                 )
+
+            cursor.execute(
+                "INSERT INTO `Historia Zakladow` (id_zakladu, id_uzytkownika, status)"
+                "VALUES (%s, %s, %s)",
+                (id_zakladu, id_uzytkownika, status_zakladu)
+            )
+        #Zatwierdzenie transakcji
         conn.commit()
 
         return jsonify({"message": "Mecz i zakłady zostały rozliczone pomyślnie"}), 200
 
     except Exception as e:
+        if conn:
+            #W razie błędu wycofać transakcje
+            conn.rollback()
         return jsonify({"error": str(e)}), 500
 
     finally:
@@ -381,5 +396,5 @@ def rozliczMecz():
         if conn:
             conn.close()
 
-
-
+if __name__ == "__main__":
+    app.run(debug=True)

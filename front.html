@@ -1,121 +1,133 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wyszukiwarka Meczów</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 20px;
-      background-color: #f7f7f7;
-    }
-    .container {
-      max-width: 600px;
-      margin: auto;
-      background: white;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    }
-    h1 {
-      text-align: center;
-    }
-    .search-box {
-      display: flex;
-      margin-bottom: 20px;
-    }
-    .search-box input {
-      flex: 1;
-      padding: 10px;
-      font-size: 16px;
-      border: 1px solid #ddd;
-      border-radius: 5px 0 0 5px;
-    }
-    .search-box button {
-      padding: 10px 20px;
-      font-size: 16px;
-      background-color: #007bff;
-      color: white;
-      border: none;
-      cursor: pointer;
-      border-radius: 0 5px 5px 0;
-    }
-    .search-box button:hover {
-      background-color: #0056b3;
-    }
-    .error {
-      color: red;
-      text-align: center;
-      margin-bottom: 20px;
-    }
-    .results {
-      margin-top: 20px;
-    }
-    .match-card {
-      border: 1px solid #ddd;
-      border-radius: 5px;
-      padding: 10px;
-      margin-bottom: 10px;
-      background-color: #fafafa;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <title>System Zakładów - Panel Testowy</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.2/axios.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .response {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background-color: #f9f9f9;
+        }
+        .error {
+            color: red;
+        }
+        .success {
+            color: green;
+        }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Wyszukiwarka Meczów</h1>
-    <div class="search-box">
-      <input type="text" id="searchQuery" placeholder="Wpisz nazwę drużyny...">
-      <button onclick="searchMatches()">Szukaj</button>
+    <h1>System Zakładów - Panel Testowy</h1>
+
+    <div class="section">
+        <h2>Postaw Zakład</h2>
+        <form id="betForm">
+            <div class="form-group">
+                <label for="userId">ID Użytkownika:</label>
+                <input type="number" id="userId" required>
+            </div>
+            <div class="form-group">
+                <label for="matchId">ID Meczu:</label>
+                <input type="number" id="matchId" required>
+            </div>
+            <div class="form-group">
+                <label for="betType">Typ Zakładu:</label>
+                <select id="betType" required>
+                    <option value="1">Zwycięstwo Gospodarzy</option>
+                    <option value="2">Zwycięstwo Gości</option>
+                    <option value="3">Remis</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="amount">Kwota:</label>
+                <input type="number" id="amount" step="0.01" required>
+            </div>
+            <button type="submit">Postaw Zakład</button>
+        </form>
+        <div id="betResponse" class="response"></div>
     </div>
-    <div class="error" id="error"></div>
-    <div class="results" id="results"></div>
-  </div>
 
-  <script>
-    async function searchMatches() {
-      const searchQuery = document.getElementById('searchQuery').value.trim();
-      const errorDiv = document.getElementById('error');
-      const resultsDiv = document.getElementById('results');
+    <div class="section">
+        <h2>Rozlicz Mecz</h2>
+        <form id="settleForm">
+            <div class="form-group">
+                <label for="settleMatchId">ID Meczu do rozliczenia:</label>
+                <input type="number" id="settleMatchId" required>
+            </div>
+            <button type="submit">Rozlicz Mecz</button>
+        </form>
+        <div id="settleResponse" class="response"></div>
+    </div>
 
-      errorDiv.textContent = '';
-      resultsDiv.innerHTML = '';
-
-      if (!searchQuery) {
-        errorDiv.textContent = 'Wprowadź zapytanie wyszukiwania.';
-        return;
-      }
-
-      try {
-        const response = await fetch(`http://localhost:5000/api/konto/find_match?search=${encodeURIComponent(searchQuery)}`);
-        if (!response.ok) {
-          throw new Error('Błąd podczas pobierania danych z serwera.');
-        }
-
-        const matches = await response.json();
-
-        if (matches.length === 0) {
-          resultsDiv.innerHTML = '<p>Brak wyników do wyświetlenia.</p>';
-          return;
-        }
-
-        matches.forEach(match => {
-          const matchCard = document.createElement('div');
-          matchCard.className = 'match-card';
-          matchCard.innerHTML = `
-            <h3>${match.gospodarz} vs ${match.gosc}</h3>
-            <p>Data meczu: ${new Date(match.data_meczu).toLocaleString()}</p>
-            <p>Gole: ${match.gole_gospodarzy} - ${match.gole_gosci}</p>
-            <p>Status: ${match.status}</p>
-            <p>Podobieństwo: ${(match.similarity * 100).toFixed(2)}%</p>
-          `;
-          resultsDiv.appendChild(matchCard);
+    <script>
+        document.getElementById('betForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const betResponse = document.getElementById('betResponse');
+            try {
+                const response = await axios.post('http://localhost:5000/api/zaklad', {
+                    id_uzytkownika: parseInt(document.getElementById('userId').value),
+                    id_meczu: parseInt(document.getElementById('matchId').value),
+                    typ: parseInt(document.getElementById('betType').value),
+                    kwota_postawiona: parseFloat(document.getElementById('amount').value)
+                });
+                betResponse.innerHTML = `<div class="success">
+                    <p>${response.data.message}</p>
+                    <p>Nowy balans: ${response.data.nowy_balans}</p>
+                    <p>Potencjalna wygrana: ${response.data.potencjalna_wygrana}</p>
+                </div>`;
+            } catch (error) {
+                betResponse.innerHTML = `<div class="error">
+                    Błąd: ${error.response?.data?.error || error.message}
+                </div>`;
+            }
         });
-      } catch (error) {
-        errorDiv.textContent = 'Wystąpił błąd podczas wyszukiwania meczów.';
-      }
-    }
-  </script>
+
+        document.getElementById('settleForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const settleResponse = document.getElementById('settleResponse');
+            try {
+                const response = await axios.post('http://localhost:5000/api/rozlicz_mecz', {
+                    id_meczu: parseInt(document.getElementById('settleMatchId').value)
+                });
+                settleResponse.innerHTML = `<div class="success">${response.data.message}</div>`;
+            } catch (error) {
+                settleResponse.innerHTML = `<div class="error">
+                    Błąd: ${error.response?.data?.error || error.message}
+                </div>`;
+            }
+        });
+    </script>
 </body>
 </html>
