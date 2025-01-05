@@ -5,8 +5,13 @@ from flask_cors import CORS
 import bcrypt
 import mysql.connector
 from difflib import SequenceMatcher
+from email.mime.text import MIMEText
+import smtplib
+import uuid
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'bazy1234'
 CORS(app)
 
 #Tutaj parametry do łączenia się z bazą w razie jakby był potrzebny to jest też port
@@ -75,12 +80,30 @@ class Uzytkownik:
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO Uzytkownik (nazwa, haslo, email, balans, data_utworzenia, rola, status_weryfikacji) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                (self.nazwa, self.hash_password(self.haslo), self.email, self.balans, self.data_utworzenia, self.rola, self.status_weryfikacji)
-            )
+            
+            #jak użytkownik insnieje
+            if self.id_uzytkownika:
+                cursor.execute("""
+                    UPDATE Uzytkownik 
+                    SET nazwa = %s, haslo = %s, email = %s, balans = %s, 
+                        rola = %s, status_weryfikacji = %s 
+                    WHERE id_uzytkownika = %s
+                """, (self.nazwa, self.hash_password(self.haslo), self.email, self.balans, 
+                     self.rola, self.status_weryfikacji, self.id_uzytkownika))
+            #Tworzy nowego użytkonika
+            else:
+                cursor.execute("""
+                    INSERT INTO Uzytkownik (nazwa, haslo, email, balans, 
+                                          data_utworzenia, rola, status_weryfikacji)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (self.nazwa, self.hash_password(self.haslo), self.email, self.balans,
+                     self.data_utworzenia, self.rola, self.status_weryfikacji))
+                self.id_uzytkownika = cursor.lastrowid
+                
             conn.commit()
+            return self.id_uzytkownika
+        except mysql.connector.Error as err:
+            raise Exception(f"Database error: {err}")
         finally:
             cursor.close()
             conn.close()
@@ -92,6 +115,18 @@ class Uzytkownik:
             conn = get_db_connection()
             cursor = conn.cursor(dictionary=True)
             cursor.execute("SELECT * FROM Uzytkownik WHERE id_uzytkownika = %s", (user_id,))
+            user = cursor.fetchone()
+            return Uzytkownik(**user) if user else None
+        finally:
+            cursor.close()
+            conn.close()
+    
+    @staticmethod
+    def get_by_name(nazwa):
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM Uzytkownik WHERE nazwa = %s", (nazwa,))
             user = cursor.fetchone()
             return Uzytkownik(**user) if user else None
         finally:
@@ -126,7 +161,7 @@ class Uzytkownik:
 def createAccount():
     data = request.json
     try:
-        if Uzytkownik.get_by_id(data['nazwa']):
+        if Uzytkownik.get_by_name(data['nazwa']):
             return jsonify({'error': 'Użytkownik o takiej nazwie już istnieje'}), 400
 
         nowe_konto = Uzytkownik(
@@ -138,7 +173,26 @@ def createAccount():
             status_weryfikacji=data.get('status_weryfikacji', False)
         )
         nowe_konto.save()
-        return jsonify({'message': 'Konto zostało pomyślnie utworzone', 'konto': nowe_konto.to_dict()}), 201
+        send_verification_email(nowe_konto)
+        return jsonify({'message': 'Konto zostało pomyślnie utworzone. Sprawdź swoją skrzynkę pocztową, aby zweryfikować konto', 'konto': nowe_konto.to_dict()}), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
+@app.route("/api/konto/verify/<token>", methods=['GET'])
+def verify_account(token):
+    try:
+        email = confirm_verification_token(token)
+        if not email:
+            return jsonify({'error': 'Link weryfikacyjny jest nieprawdłowy lub wygasł'}), 400
+        
+        user = Uzytkownik.get_by_name(email)
+
+        if not user:
+            return jsonify({'error': 'Użytkownik nie istnieje'}), 404
+
+        user.status_weryfikacji = True
+        user.save()
+        return jsonify({'message': 'Konto zostało pomyślnie zweryfikowane'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -162,12 +216,75 @@ def deleteAccount(id_uzytkownika):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-if __name__ == "__main__":
-    if test_db_connection():
-        print("Połączenie z bazą danych zostało ustanowione pomyślnie.")
-        #app.run(debug=True)
-    else:
-        print("Nie udało się połączyć z bazą danych.")
+@app.route("/api/konto/reset_password", methods=['POST'])
+def resetPassword():
+    data = request.json
+    try:
+        user = Uzytkownik.get_by_name(data['nazwa'])
+        if not user:
+            return jsonify({'error': 'Użytkownik nie istnieje'}), 404
+        
+        new_password = data['new_password']
+        hashed_password = Uzytkownik.hash_password(new_password)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE Uzytkownik SET haslo = %s WHERE id_uzytkownika = %s",
+            (hashed_password, user.id_uzytkownika)
+        )
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({'message': 'Hasło zostało pomyślnie zresetowane'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+#Wsysłanie maila tutaj
+def send_email(to_email, subject, body):
+    from_email = "bukmacherteststudia@gmail.com"
+    from_password = "rhug meuu artk weof"
+
+    msg = MIMEText(body)
+    msg['Subject'] = subject
+    msg['From'] = from_email
+    msg['To'] = to_email
+
+    try:
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        server.login(from_email, from_password)
+        server.sendmail(from_email, to_email, msg.as_string())
+        server.quit()
+        print("Mail wysłany pomyślnie")
+    except Exception as e:
+        print(f"Nieudało się wysłać maila: {str(e)}")
+
+#Generowanie unikalnych tokenów
+def generate_verification_token(email):
+    serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+    return serializer.dumps(email, salt='email-verification')
+
+#Zatwierdzanie tokena
+def confirm_verification_token(token, expiration=3600):
+    serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+    try:
+        email = serializer.loads(
+            token,
+            salt='email-verification',
+            max_age=expiration
+        )
+    except (SignatureExpired, BadSignature):
+        return None
+    return email
+
+#Wysyalnie maila weryfikacyjnego
+def send_verification_email(user):
+    token = generate_verification_token(user.email)
+    verification_url = f"http://localhost:5000/api/konto/verify/{token}"
+    subject = "Prosze zweryfikować emaila!"
+    body = f"{user.nazwa}, kliknij aby zweryfikować email: {verification_url}"
+    send_email(user.email, subject, body)
 
 #Funckcja do szukania meczów po nazwie częscie nazwy itp
 @app.route('/api/konto/find_match', methods=['GET'])
@@ -397,4 +514,9 @@ def rozliczMecz():
             conn.close()
 
 if __name__ == "__main__":
+    if test_db_connection():
+        print("Połączenie z bazą danych zostało ustanowione pomyślnie.")
+    else:
+        print("Nie udało się połączyć z bazą danych.")
+    
     app.run(debug=True)

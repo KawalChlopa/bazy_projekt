@@ -2,132 +2,176 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>System Zakładów - Panel Testowy</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.2/axios.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 20px auto;
-            padding: 20px;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-        }
-        input, select {
-            width: 100%;
-            padding: 8px;
-            margin-bottom: 10px;
-        }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
-        .response {
-            margin-top: 20px;
-            padding: 10px;
-            border: 1px solid #ddd;
-            background-color: #f9f9f9;
-        }
-        .error {
-            color: red;
-        }
-        .success {
-            color: green;
-        }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tester Weryfikacji Konta</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.js"></script>
 </head>
-<body>
-    <h1>System Zakładów - Panel Testowy</h1>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Panel rejestracji -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-2xl font-bold mb-4">Rejestracja użytkownika</h2>
+            <form id="registrationForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium">Nazwa użytkownika</label>
+                    <input type="text" id="nazwa" required 
+                        class="mt-1 block w-full rounded border-gray-300 border p-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">Email</label>
+                    <input type="email" id="email" required 
+                        class="mt-1 block w-full rounded border-gray-300 border p-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">Hasło</label>
+                    <input type="password" id="haslo" required 
+                        class="mt-1 block w-full rounded border-gray-300 border p-2">
+                </div>
+                <button type="submit" 
+                    class="w-full bg-blue-500 text-white rounded py-2 px-4 hover:bg-blue-600">
+                    Zarejestruj
+                </button>
+            </form>
+            <div id="registrationStatus" class="mt-4 p-4 rounded hidden"></div>
+        </div>
 
-    <div class="section">
-        <h2>Postaw Zakład</h2>
-        <form id="betForm">
-            <div class="form-group">
-                <label for="userId">ID Użytkownika:</label>
-                <input type="number" id="userId" required>
+        <!-- Panel weryfikacji tokenu -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-2xl font-bold mb-4">Weryfikacja tokenu</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium">Token weryfikacyjny</label>
+                    <input type="text" id="verificationToken" 
+                        class="mt-1 block w-full rounded border-gray-300 border p-2">
+                </div>
+                <button onclick="verifyToken()" 
+                    class="w-full bg-green-500 text-white rounded py-2 px-4 hover:bg-green-600">
+                    Zweryfikuj token
+                </button>
             </div>
-            <div class="form-group">
-                <label for="matchId">ID Meczu:</label>
-                <input type="number" id="matchId" required>
-            </div>
-            <div class="form-group">
-                <label for="betType">Typ Zakładu:</label>
-                <select id="betType" required>
-                    <option value="1">Zwycięstwo Gospodarzy</option>
-                    <option value="2">Zwycięstwo Gości</option>
-                    <option value="3">Remis</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="amount">Kwota:</label>
-                <input type="number" id="amount" step="0.01" required>
-            </div>
-            <button type="submit">Postaw Zakład</button>
-        </form>
-        <div id="betResponse" class="response"></div>
-    </div>
+            <div id="verificationStatus" class="mt-4 p-4 rounded hidden"></div>
+        </div>
 
-    <div class="section">
-        <h2>Rozlicz Mecz</h2>
-        <form id="settleForm">
-            <div class="form-group">
-                <label for="settleMatchId">ID Meczu do rozliczenia:</label>
-                <input type="number" id="settleMatchId" required>
+        <!-- Lista użytkowników -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold">Lista użytkowników</h2>
+                <button onclick="refreshUsers()" 
+                    class="bg-gray-500 text-white rounded py-2 px-4 hover:bg-gray-600">
+                    Odśwież
+                </button>
             </div>
-            <button type="submit">Rozlicz Mecz</button>
-        </form>
-        <div id="settleResponse" class="response"></div>
+            <div id="usersList" class="space-y-2"></div>
+        </div>
     </div>
 
     <script>
-        document.getElementById('betForm').addEventListener('submit', async (e) => {
+        const API_URL = 'http://localhost:5000/api';
+
+        // Rejestracja użytkownika
+        document.getElementById('registrationForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const betResponse = document.getElementById('betResponse');
+            const statusDiv = document.getElementById('registrationStatus');
+            
             try {
-                const response = await axios.post('http://localhost:5000/api/zaklad', {
-                    id_uzytkownika: parseInt(document.getElementById('userId').value),
-                    id_meczu: parseInt(document.getElementById('matchId').value),
-                    typ: parseInt(document.getElementById('betType').value),
-                    kwota_postawiona: parseFloat(document.getElementById('amount').value)
+                const response = await fetch(`${API_URL}/konto`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        nazwa: document.getElementById('nazwa').value,
+                        email: document.getElementById('email').value,
+                        haslo: document.getElementById('haslo').value
+                    })
                 });
-                betResponse.innerHTML = `<div class="success">
-                    <p>${response.data.message}</p>
-                    <p>Nowy balans: ${response.data.nowy_balans}</p>
-                    <p>Potencjalna wygrana: ${response.data.potencjalna_wygrana}</p>
-                </div>`;
+
+                const data = await response.json();
+                showStatus('registrationStatus', 
+                    response.ok ? data.message : data.error, 
+                    response.ok ? 'success' : 'error');
+
+                if (response.ok) {
+                    document.getElementById('registrationForm').reset();
+                    refreshUsers();
+                }
             } catch (error) {
-                betResponse.innerHTML = `<div class="error">
-                    Błąd: ${error.response?.data?.error || error.message}
-                </div>`;
+                showStatus('registrationStatus', 
+                    'Błąd połączenia z serwerem', 'error');
             }
         });
 
-        document.getElementById('settleForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const settleResponse = document.getElementById('settleResponse');
-            try {
-                const response = await axios.post('http://localhost:5000/api/rozlicz_mecz', {
-                    id_meczu: parseInt(document.getElementById('settleMatchId').value)
-                });
-                settleResponse.innerHTML = `<div class="success">${response.data.message}</div>`;
-            } catch (error) {
-                settleResponse.innerHTML = `<div class="error">
-                    Błąd: ${error.response?.data?.error || error.message}
-                </div>`;
+        // Weryfikacja tokenu
+        async function verifyToken() {
+            const token = document.getElementById('verificationToken').value;
+            if (!token) {
+                showStatus('verificationStatus', 
+                    'Wprowadź token weryfikacyjny', 'error');
+                return;
             }
-        });
+
+            try {
+                const response = await fetch(`${API_URL}/konto/verify/${token}`);
+                const data = await response.json();
+                
+                showStatus('verificationStatus', 
+                    response.ok ? data.message : data.error,
+                    response.ok ? 'success' : 'error');
+
+                if (response.ok) {
+                    document.getElementById('verificationToken').value = '';
+                    refreshUsers();
+                }
+            } catch (error) {
+                showStatus('verificationStatus', 
+                    'Błąd połączenia z serwerem', 'error');
+            }
+        }
+
+        // Odświeżanie listy użytkowników
+        async function refreshUsers() {
+            try {
+                const response = await fetch(`${API_URL}/konto`);
+                const users = await response.json();
+                
+                document.getElementById('usersList').innerHTML = users.map(user => `
+                    <div class="border p-4 rounded">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="font-bold">${user.nazwa}</p>
+                                <p class="text-sm text-gray-600">${user.email}</p>
+                            </div>
+                            <span class="px-2 py-1 rounded text-sm ${
+                                user.status_weryfikacji 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-red-100 text-red-800'
+                            }">
+                                ${user.status_weryfikacji ? 'Zweryfikowany' : 'Niezweryfikowany'}
+                            </span>
+                        </div>
+                        <p class="text-sm text-gray-500 mt-2">
+                            Utworzono: ${new Date(user.data_utworzenia).toLocaleString()}
+                        </p>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Błąd podczas pobierania użytkowników:', error);
+            }
+        }
+
+        // Pomocnicza funkcja do wyświetlania statusów
+        function showStatus(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.classList.remove('hidden', 'bg-green-100', 'text-green-800', 'bg-red-100', 'text-red-800');
+            element.classList.add(
+                type === 'success' ? 'bg-green-100' : 'bg-red-100',
+                type === 'success' ? 'text-green-800' : 'text-red-800'
+            );
+        }
+
+        // Inicjalne pobranie listy użytkowników
+        refreshUsers();
     </script>
 </body>
 </html>
