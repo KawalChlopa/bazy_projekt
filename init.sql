@@ -6,7 +6,7 @@ CREATE TABLE `Uzytkownik`(
     `balans` DECIMAL(8, 2) NOT NULL,
     `data_utworzenia` DATE NOT NULL,
     `rola` VARCHAR(50) NOT NULL,
-    `status_weryfikacji` VARCHAR(50) NOT NULL
+    `status_weryfikacji` BOOLEAN NOT NULL
 );
 CREATE TABLE `Druzyny`(
     `id_druzyny` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -16,7 +16,7 @@ CREATE TABLE `Druzyny`(
     `stadion` VARCHAR(50) NOT NULL,
     `sezon` BIGINT NOT NULL
 );
-CREATE TABLE `Tansakcje`(
+CREATE TABLE `Transakcje`(
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `kwota` DECIMAL(8, 2) NOT NULL,
     `typ_operacji` VARCHAR(50) NOT NULL,
@@ -34,7 +34,7 @@ CREATE TABLE `Mecz`(
     `zwyciestwo_gosci` BOOLEAN NOT NULL,
     `status` VARCHAR(50) NOT NULL
 );
-CREATE TABLE `Statystyki Zawodnikow`(
+CREATE TABLE `Statystyki_Zawodnikow`(
     `id_statystyk` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `id_meczu` BIGINT NOT NULL,
     `id_zawodnika` BIGINT NOT NULL,
@@ -44,14 +44,14 @@ CREATE TABLE `Statystyki Zawodnikow`(
 );
 CREATE TABLE `Zaklad`(
     `id_zakladu` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    `id_uzytkownika` BIGINT NOT NULL,
     `id_meczu` BIGINT NOT NULL,
+    `id_uzytkownika` BIGINT NOT NULL,
     `wynik` BOOLEAN NOT NULL,
     `kwota_postawiona` DECIMAL(8, 2) NOT NULL,
     `potencjalna_wygrana` DECIMAL(8, 2) NOT NULL,
     `status_zakladu` VARCHAR(50) NOT NULL,
     `data_postawienia` DATETIME NOT NULL,
-    `typ` BIGINT NOT NULL
+    `kurs_meczu` BIGINT NOT NULL
 );
 CREATE TABLE `Zawodnicy`(
     `id_zawodnika` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -62,28 +62,20 @@ CREATE TABLE `Zawodnicy`(
     `data_urodzenia` DATETIME NOT NULL,
     `numer_koszulki` INT NOT NULL
 );
-CREATE TABLE `Historia Zakladow`(
+CREATE TABLE `Kursy_Meczu`(
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    `id_zakladu` BIGINT NOT NULL,
-    `id_uzytkownika` BIGINT NOT NULL,
-    `status` VARCHAR(50) NOT NULL
-);
-CREATE TABLE `Typ zakladu`(
-    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    `opis` VARCHAR(255) NOT NULL,
-    `mnoznik` DECIMAL(8, 2) NOT NULL,
-    `status` BOOLEAN NOT NULL
-);
-CREATE TABLE `Postawione zaklady`(
-    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    `id_zakladu` BIGINT NOT NULL
+    `id_meczu` BIGINT NOT NULL,
+    `nazwa_typu` VARCHAR(255) NOT NULL,
+    `kurs` DECIMAL(8, 2) NOT NULL,
+    `status` BOOLEAN NOT NULL,
+    `data_utworzenia` DATETIME NOT NULL
 );
 CREATE TABLE `Ksiegowosc`(
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `id_uzytkownika` BIGINT NOT NULL,
     `id_transakcji` BIGINT NOT NULL
 );
-CREATE TABLE `Zdarzenia w meczu`(
+CREATE TABLE `Zdarzenia_w_meczu`(
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `id_zawodnika` BIGINT NOT NULL,
     `id_meczu` BIGINT NOT NULL,
@@ -91,7 +83,7 @@ CREATE TABLE `Zdarzenia w meczu`(
     `typ_zdarzenia` VARCHAR(50) NOT NULL,
     `dodatkowe_informacje` VARCHAR(255) NOT NULL
 );
-CREATE TABLE `Historia Salda`(
+CREATE TABLE `Historia_Salda`(
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     `id_uzytkownika` BIGINT NOT NULL,
     `saldo_po_operacji` DECIMAL(8, 2) NOT NULL,
@@ -99,32 +91,30 @@ CREATE TABLE `Historia Salda`(
     `id_transakcji` BIGINT NOT NULL
 );
 ALTER TABLE
-    `Historia Salda` ADD CONSTRAINT `historia salda_id_transakcji_foreign` FOREIGN KEY(`id_transakcji`) REFERENCES `Transakcje`(`id`);
+    `Historia_Salda` ADD CONSTRAINT `historia_salda_id_transakcji_foreign` FOREIGN KEY(`id_transakcji`) REFERENCES `Transakcje`(`id`);
 ALTER TABLE
-    `Zdarzenia w meczu` ADD CONSTRAINT `zdarzenia w meczu_id_zawodnika_foreign` FOREIGN KEY(`id_zawodnika`) REFERENCES `Zawodnicy`(`id_zawodnika`);
+    `Mecz` ADD CONSTRAINT `mecz_data_meczu_foreign` FOREIGN KEY(`data_meczu`) REFERENCES `Kursy_Meczu`(`id_meczu`);
 ALTER TABLE
-    `Zdarzenia w meczu` ADD CONSTRAINT `zdarzenia w meczu_id_meczu_foreign` FOREIGN KEY(`id_meczu`) REFERENCES `Mecz`(`id_meczu`);
+    `Zdarzenia_w_meczu` ADD CONSTRAINT `zdarzenia_w_meczu_id_zawodnika_foreign` FOREIGN KEY(`id_zawodnika`) REFERENCES `Zawodnicy`(`id_zawodnika`);
 ALTER TABLE
-    `Ksiegowosc` ADD CONSTRAINT `ksiegowosc_id_transakcji_foreign` FOREIGN KEY(`id_transakcji`) REFERENCES `Tansakcje`(`id`);
+    `Zdarzenia_w_meczu` ADD CONSTRAINT `zdarzenia_w_meczu_id_meczu_foreign` FOREIGN KEY(`id_meczu`) REFERENCES `Mecz`(`id_meczu`);
+ALTER TABLE
+    `Ksiegowosc` ADD CONSTRAINT `ksiegowosc_id_transakcji_foreign` FOREIGN KEY(`id_transakcji`) REFERENCES `Transakcje`(`id`);
 ALTER TABLE
     `Mecz` ADD CONSTRAINT `mecz_id_gospodarzy_foreign` FOREIGN KEY(`id_gospodarzy`) REFERENCES `Druzyny`(`id_druzyny`);
 ALTER TABLE
-    `Statystyki Zawodnikow` ADD CONSTRAINT `statystyki zawodnikow_id_meczu_foreign` FOREIGN KEY(`id_meczu`) REFERENCES `Mecz`(`id_meczu`);
-ALTER TABLE
-    `Postawione zaklady` ADD CONSTRAINT `postawione zaklady_id_zakladu_foreign` FOREIGN KEY(`id_zakladu`) REFERENCES `Zaklad`(`id_zakladu`);
+    `Statystyki_Zawodnikow` ADD CONSTRAINT `statystyki_zawodnikow_id_meczu_foreign` FOREIGN KEY(`id_meczu`) REFERENCES `Mecz`(`id_meczu`);
 ALTER TABLE
     `Mecz` ADD CONSTRAINT `mecz_id_gosci_foreign` FOREIGN KEY(`id_gosci`) REFERENCES `Druzyny`(`id_druzyny`);
 ALTER TABLE
-    `Statystyki Zawodnikow` ADD CONSTRAINT `statystyki zawodnikow_id_zawodnika_foreign` FOREIGN KEY(`id_zawodnika`) REFERENCES `Zawodnicy`(`id_zawodnika`);
-ALTER TABLE
-    `Historia Zakladow` ADD CONSTRAINT `historia zakladow_id_zakladu_foreign` FOREIGN KEY(`id_zakladu`) REFERENCES `Zaklad`(`id_zakladu`);
+    `Statystyki_Zawodnikow` ADD CONSTRAINT `statystyki_zawodnikow_id_zawodnika_foreign` FOREIGN KEY(`id_zawodnika`) REFERENCES `Zawodnicy`(`id_zawodnika`);
 ALTER TABLE
     `Zaklad` ADD CONSTRAINT `zaklad_id_meczu_foreign` FOREIGN KEY(`id_meczu`) REFERENCES `Mecz`(`id_meczu`);
 ALTER TABLE
-    `Historia Salda` ADD CONSTRAINT `historia salda_id_uzytkownika_foreign` FOREIGN KEY(`id_uzytkownika`) REFERENCES `Uzytkownik`(`id_uzytkownika`);
+    `Historia_Salda` ADD CONSTRAINT `historia_salda_id_uzytkownika_foreign` FOREIGN KEY(`id_uzytkownika`) REFERENCES `Uzytkownik`(`id_uzytkownika`);
 ALTER TABLE
     `Zaklad` ADD CONSTRAINT `zaklad_id_uzytkownika_foreign` FOREIGN KEY(`id_uzytkownika`) REFERENCES `Uzytkownik`(`id_uzytkownika`);
 ALTER TABLE
     `Ksiegowosc` ADD CONSTRAINT `ksiegowosc_id_uzytkownika_foreign` FOREIGN KEY(`id_uzytkownika`) REFERENCES `Uzytkownik`(`id_uzytkownika`);
 ALTER TABLE
-    `Zaklad` ADD CONSTRAINT `zaklad_typ_foreign` FOREIGN KEY(`typ`) REFERENCES `Typ zakladu`(`id`);
+    `Zaklad` ADD CONSTRAINT `zaklad_kurs_meczu_foreign` FOREIGN KEY(`kurs_meczu`) REFERENCES `Kursy_Meczu`(`id`);
