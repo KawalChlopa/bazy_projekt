@@ -459,39 +459,47 @@ def postawZaklad():
         # Obliczenie potencjalnej wygranej
         potencjalna_wygrana = kwota_postawiona * Decimal(str(kurs_info['kurs']))
 
-        # Zapis zakładu
-        cursor.execute(
-            """INSERT INTO Zaklad 
-               (id_meczu, id_uzytkownika, wynik, kwota_postawiona, 
-                potencjalna_wygrana, status_zakladu, data_postawienia, kurs_meczu) 
-               VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s)""",
-            (kurs_info['id_meczu'], id_uzytkownika, False, kwota_postawiona, 
-             potencjalna_wygrana, "Oczekujący", id_kursu)  # Zmiana z kurs_info['kurs'] na id_kursu
-        )
-        id_zakladu = cursor.lastrowid
 
-        # Aktualizacja salda użytkownika
-        nowy_balans = uzytkownik.balans - kwota_postawiona
-        cursor.execute(
-            "UPDATE Uzytkownik SET balans = %s WHERE id_uzytkownika = %s",
-            (nowy_balans, id_uzytkownika)
-        )
+        try:
+            # Zapis zakładu
+            cursor.execute(
+                """INSERT INTO Zaklad 
+                (id_meczu, id_uzytkownika, wynik, kwota_postawiona, 
+                    potencjalna_wygrana, status_zakladu, data_postawienia, kurs_meczu) 
+                VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s)""",
+                (kurs_info['id_meczu'], id_uzytkownika, False, kwota_postawiona, 
+                potencjalna_wygrana, "Oczekujący", id_kursu)  # Zmiana z kurs_info['kurs'] na id_kursu
+            )
+            id_zakladu = cursor.lastrowid
 
-        conn.commit()
-        print("Zakład został pomyślnie zapisany")
+            # Aktualizacja salda użytkownika
+            nowy_balans = uzytkownik.balans - kwota_postawiona
+            cursor.execute(
+                "UPDATE Uzytkownik SET balans = %s WHERE id_uzytkownika = %s",
+                (nowy_balans, id_uzytkownika)
+            )
 
-        return jsonify({
-            "message": "Zakład został pomyślnie postawiony",
-            "szczegoly": {
-                "id_zakladu": id_zakladu,
-                "nowy_balans": str(nowy_balans),
-                "potencjalna_wygrana": str(potencjalna_wygrana),
-                "mecz": kurs_info['nazwa_meczu'],
-                "typ_zakladu": kurs_info['nazwa_typu'],
-                "kurs": str(kurs_info['kurs'])
-            }
-        }), 201
+            zaklad_transakcje(cursor, id_uzytkownika, kwota_postawiona, nowy_balans, "Postawienie zakładu")
 
+            conn.commit()
+            print("Zakład został pomyślnie zapisany")
+
+            return jsonify({
+                "message": "Zakład został pomyślnie postawiony",
+                "szczegoly": {
+                    "id_zakladu": id_zakladu,
+                    "nowy_balans": str(nowy_balans),
+                    "potencjalna_wygrana": str(potencjalna_wygrana),
+                    "mecz": kurs_info['nazwa_meczu'],
+                    "typ_zakladu": kurs_info['nazwa_typu'],
+                    "kurs": str(kurs_info['kurs'])
+                }
+            }), 201
+        
+        except Exception as inner_e:
+            conn.rollback()
+            raise inner_e
+        
     except Exception as e:
         print(f"Wystąpił nieoczekiwany błąd: {str(e)}")
         if conn:
@@ -519,6 +527,8 @@ def rozliczMecz():
         
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+
+        conn.start_transaction()
 
         # Sprawdź czy mecz istnieje i pobierz jego wynik
         cursor.execute("""
@@ -574,11 +584,22 @@ def rozliczMecz():
 
             # Wypłata wygranej
             if wygrany:
-                cursor.execute("""
-                    UPDATE Uzytkownik 
-                    SET balans = balans + %s 
-                    WHERE id_uzytkownika = %s
-                """, (zaklad['potencjalna_wygrana'], zaklad['id_uzytkownika']))
+                cursor.execute("""SELECT balans FROM Uzytkownik WHERE id_uzytkownika = %s""", (zaklad['id_uzytkownika'],))
+
+                current_balance = cursor.fetchone()['balans']
+
+                new_balance = current_balance + zaklad['potencjalna_wygrana']
+
+                cursor.execute("""UPDATE Uzytkownik SET balans = %s WHERE id_uzytkownika = %s""", (new_balance, zaklad['id_uzytkownika']))
+
+                zaklad_transakcje(cursor, zaklad['id_uzytkownika'], zaklad['potencjalna_wygrana'], new_balance, "Wygrana zakładu")
+            
+            else:
+                cursor.execute("""SELECT balans FROM Uzytkownik WHERE id_uzytkownika = %s""", (zaklad['id_uzytkownika'],))
+
+                current_balance = cursor.fetchone()['balans']
+
+                zaklad_transakcje(cursor, zaklad['id_uzytkownika'], 0, current_balance, "Przegrana zakładu")
 
             # Dodaj wpis do historii (upewnij się, że nazwa tabeli jest prawidłowa)
             # cursor.execute("""
@@ -752,6 +773,109 @@ def deactivate_match_odd(mecz_id, kurs_id):
             cursor.close()
         if conn:
             conn.close()
+
+
+#Księgowość------------------------
+
+def transakcja(cursor, kwota, typ_operacji):
+    cursor.execute("""
+        INSERT INTO Transakcje (kwota, typ_operacji, data) 
+        VALUES (%s, %s, NOW())
+    """, (kwota, typ_operacji)
+    )
+    return cursor.lastrowid
+
+def ksiegowosc(cursor, id_uzytkownika, id_transakcji):
+    cursor.execute("""
+        INSERT INTO Ksiegowosc (id_uzytkownika, id_transakcji)
+        VALUES (%s, %s)""",
+        (id_uzytkownika, id_transakcji)
+    )
+
+def historia_salda(cursor, id_uzytkownika, zmiana_balansu, saldo_po_operacji, id_transakcji):
+    cursor.execute("""
+        INSERT INTO Historia_Salda (id_uzytkownika, zmiana_balansu, saldo_po_operacji, id_transakcji)
+        VALUES (%s, %s, %s, %s)""",
+        (id_uzytkownika, zmiana_balansu, saldo_po_operacji, id_transakcji)
+    )
+
+def zaklad_transakcje(cursor, id_uzytkownika, kwota, nowy_balans, typ_operacji):
+    id_transakcji = transakcja(cursor, kwota, typ_operacji)
+
+    ksiegowosc(cursor, id_uzytkownika, id_transakcji)
+
+    historia_salda(cursor, id_uzytkownika, -kwota if typ_operacji == "Postanwienie zakładu" else kwota, nowy_balans, id_transakcji)
+
+    return id_transakcji
+
+@app.route("/api/konto/<int:id_uzytkownika>/bilans", methods=['GET'])
+def balans_status(id_uzytkownika):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("""
+                       SELECT t.typ_operacji, SUM(t.kwota) as suma_kwota, COUNT(t.id) as liczba_transakcji
+                       FROM Transakcje t
+                       JOIN Ksiegowosc k ON t.id = k.id_transakcji
+                       WHERE k.id_uzytkownika = %s
+                       GROUP BY t.typ_operacji
+                       """, (id_uzytkownika,))
+        transakcje = cursor.fetchall()
+        
+        #Pobiranie szczegółowyhcch statystyk dotycących ksiegowosci użytkownika
+        cursor.execute("""
+            SELECT
+                COUNT(CASE WHEN z.wynik = TRUE THEN 1 END) as wygrane_zaklady,
+                COUNT(CASE WHEN z.wynik = FALSE THEN 1 END) as przegrane_zaklady,
+                SUM(CASE WHEN z.wynik = TRUE THEN z.potencjalna_wygrana ELSE 0 END) as suma_wygranych,
+                SUM(CASE WHEN z.wynik = FALSE THEN z.kwota_postawiona ELSE 0 END) as suma_przegranych,
+                SUM(z.kwota_postawiona) as suma_postawionych,
+                ROUND(
+                    (COUNT(CASE WHEN z.wynik = TRUE THEN 1 END) * 100.0) / NULLIF(COUNT(*),0), 2) as procent_wygranych
+            FROM Zaklad z
+            WHERE z.id_uzytkownika = %s AND z.status_zakladu IN ('Wygrany', 'Przegrany')""", (id_uzytkownika,))
+        
+        statystyki = cursor.fetchone()
+
+        #pobieranie historii salda
+        cursor.execute("""
+            SELECT 
+                hs.zmiana_balansu,
+                hs.saldo_po_operacji,
+                t.typ_operacji,
+                t.data,
+                t.kwota
+            FROM Historia_Salda hs
+            JOIN Transakcje t ON hs.id_transakcji = t.id
+            WHERE hs.id_uzytkownika = %s
+            ORDER BY t.data DESC
+            LIMIT 10
+        """, (id_uzytkownika,))
+
+        historia = cursor.fetchall()
+
+        return jsonify({
+            'transakcje': transakcje,
+            'statystyki': statystyki,
+            'ostatnie_operacje': [{
+                'data': h['data'].isoformat(),
+                'typ_operacji': h['typ_operacji'],
+                'kwota': str(h['kwota']),
+                'zmiana_balansu': str(h['zmiana_balansu']),
+                'saldo_po_operacji': str(h['saldo_po_operacji'])
+                } for h in historia
+            ]
+        }), 200
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+            
 if __name__ == "__main__":
     if test_db_connection():
         print("Połączenie z bazą danych zostało ustanowione pomyślnie.")

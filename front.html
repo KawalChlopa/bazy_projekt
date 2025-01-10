@@ -3,434 +3,480 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>System Bukmacherski</title>
+    <title>Panel testowy bukmachera</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
+        .section {
+            margin-bottom: 30px;
             padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        .nav {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        .nav button {
-            padding: 10px 20px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        .nav button:hover {
-            background-color: #0056b3;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-        }
-        input, select {
-            width: 100%;
-            padding: 8px;
             border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        button {
-            padding: 10px 20px;
-            background-color: #28a745;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #218838;
-        }
-        .message {
-            padding: 10px;
-            margin-top: 10px;
-            border-radius: 4px;
-        }
-        .success {
-            background-color: #d4edda;
-            color: #155724;
-        }
-        .error {
-            background-color: #f8d7da;
-            color: #721c24;
-        }
-        .search-results {
-            margin-top: 20px;
-        }
-        .match-card {
-            background-color: white;
-            padding: 15px;
-            margin-bottom: 10px;
-            border-radius: 4px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        .hidden {
-            display: none;
-        }
-        .odds-list {
-            margin-top: 15px;
-            border: 1px solid #ddd;
-            padding: 10px;
-            border-radius: 4px;
-        }
-        .odds-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 10px;
-            padding: 10px;
-            background-color: #f8f9fa;
-            border-radius: 4px;
-        }
-        .odds-item input[type="radio"] {
-            margin-right: 10px;
-            width: auto;
-        }
-        .odds-value {
-            margin-left: auto;
-            font-weight: bold;
-            color: #007bff;
-        }
-        .match-select {
-            margin-bottom: 20px;
+            border-radius: 5px;
         }
     </style>
 </head>
-<body>
-    <div class="nav">
-        <button onclick="showSection('register')">Rejestracja</button>
-        <button onclick="showSection('search')">Wyszukaj Mecze</button>
-        <button onclick="showSection('bet')">Postaw Zakład</button>
-        <button onclick="showSection('odds')">Zarządzaj Kursami</button>
-        <button onclick="showSection('settle')">Rozlicz Mecz</button>
+<body class="container mt-4">
+    <h1 class="mb-4">Panel testowy bukmachera</h1>
+
+    <!-- Zarządzanie kontem -->
+    <div class="section">
+        <h2>Zarządzanie kontem</h2>
+        
+        <!-- Tworzenie konta -->
+        <div class="mb-4">
+            <h3>Tworzenie konta</h3>
+            <form id="createAccountForm">
+                <div class="mb-3">
+                    <input type="text" class="form-control" id="nazwa" placeholder="Nazwa użytkownika">
+                </div>
+                <div class="mb-3">
+                    <input type="password" class="form-control" id="haslo" placeholder="Hasło">
+                </div>
+                <div class="mb-3">
+                    <input type="email" class="form-control" id="email" placeholder="Email">
+                </div>
+                <button type="submit" class="btn btn-primary">Utwórz konto</button>
+            </form>
+        </div>
+
+        <!-- Lista użytkowników -->
+        <div class="mb-4">
+            <h3>Lista użytkowników</h3>
+            <button onclick="getAccounts()" class="btn btn-info">Pobierz listę</button>
+            <div id="accountsList" class="mt-2"></div>
+        </div>
+
+        <!-- Usuwanie konta -->
+        <div class="mb-4">
+            <h3>Usuwanie konta</h3>
+            <form id="deleteAccountForm">
+                <div class="mb-3">
+                    <input type="number" class="form-control" id="deleteUserId" placeholder="ID użytkownika">
+                </div>
+                <button type="submit" class="btn btn-danger">Usuń konto</button>
+            </form>
+        </div>
+
+        <!-- Reset hasła -->
+        <div class="mb-4">
+            <h3>Reset hasła</h3>
+            <form id="resetPasswordForm">
+                <div class="mb-3">
+                    <input type="text" class="form-control" id="resetUsername" placeholder="Nazwa użytkownika">
+                </div>
+                <div class="mb-3">
+                    <input type="password" class="form-control" id="newPassword" placeholder="Nowe hasło">
+                </div>
+                <button type="submit" class="btn btn-warning">Resetuj hasło</button>
+            </form>
+        </div>
     </div>
 
-    <!-- Sekcja rejestracji -->
-    <div id="register" class="container">
-        <h2>Rejestracja Użytkownika</h2>
-        <form id="registerForm" onsubmit="registerUser(event)">
-            <div class="form-group">
-                <label>Nazwa użytkownika:</label>
-                <input type="text" name="nazwa" required>
-            </div>
-            <div class="form-group">
-                <label>Hasło:</label>
-                <input type="password" name="haslo" required>
-            </div>
-            <div class="form-group">
-                <label>Email:</label>
-                <input type="email" name="email" required>
-            </div>
-            <button type="submit">Zarejestruj</button>
-        </form>
-        <div id="registerMessage" class="message"></div>
+    <!-- Zarządzanie zakładami -->
+    <div class="section">
+        <h2>Zarządzanie zakładami</h2>
+        
+        <!-- Wyszukiwanie meczu -->
+        <div class="mb-4">
+            <h3>Wyszukiwanie meczu</h3>
+            <form id="findMatchForm">
+                <div class="mb-3">
+                    <input type="text" class="form-control" id="searchQuery" placeholder="Nazwa drużyny">
+                </div>
+                <button type="submit" class="btn btn-primary">Szukaj</button>
+            </form>
+            <div id="matchResults" class="mt-2"></div>
+        </div>
+
+        <!-- Stawianie zakładu -->
+        <div class="mb-4">
+            <h3>Stawianie zakładu</h3>
+            <form id="placeBetForm">
+                <div class="mb-3">
+                    <input type="number" class="form-control" id="betUserId" placeholder="ID użytkownika">
+                </div>
+                <div class="mb-3">
+                    <input type="number" class="form-control" id="betOddsId" placeholder="ID kursu">
+                </div>
+                <div class="mb-3">
+                    <input type="number" class="form-control" id="betAmount" placeholder="Kwota zakładu" step="0.01">
+                </div>
+                <button type="submit" class="btn btn-success">Postaw zakład</button>
+            </form>
+        </div>
+
+        <!-- Rozliczanie meczu -->
+        <div class="mb-4">
+            <h3>Rozliczanie meczu</h3>
+            <form id="settleMatchForm">
+                <div class="mb-3">
+                    <input type="number" class="form-control" id="matchId" placeholder="ID meczu">
+                </div>
+                <button type="submit" class="btn btn-info">Rozlicz mecz</button>
+            </form>
+        </div>
     </div>
 
-    <!-- Sekcja wyszukiwania meczów -->
-    <div id="search" class="container hidden">
-        <h2>Wyszukaj Mecze</h2>
-        <form id="searchForm" onsubmit="searchMatches(event)">
-            <div class="form-group">
-                <label>Szukana fraza:</label>
-                <input type="text" name="search" required>
-            </div>
-            <button type="submit">Szukaj</button>
-        </form>
-        <div id="searchResults" class="search-results"></div>
+    <!-- Zarządzanie kursami -->
+    <div class="section">
+        <h2>Zarządzanie kursami</h2>
+        
+        <!-- Dodawanie kursu -->
+        <div class="mb-4">
+            <h3>Dodawanie kursu</h3>
+            <form id="addOddsForm">
+                <div class="mb-3">
+                    <input type="number" class="form-control" id="matchIdForOdds" placeholder="ID meczu">
+                </div>
+                <div class="mb-3">
+                    <input type="text" class="form-control" id="oddsType" placeholder="Typ kursu">
+                </div>
+                <div class="mb-3">
+                    <input type="number" class="form-control" id="oddsValue" placeholder="Wartość kursu" step="0.01">
+                </div>
+                <button type="submit" class="btn btn-primary">Dodaj kurs</button>
+            </form>
+        </div>
+
+        <!-- Lista kursów -->
+        <div class="mb-4">
+            <h3>Lista kursów dla meczu</h3>
+            <form id="getOddsForm">
+                <div class="mb-3">
+                    <input type="number" class="form-control" id="matchIdForList" placeholder="ID meczu">
+                </div>
+                <button type="submit" class="btn btn-info">Pobierz kursy</button>
+            </form>
+            <div id="oddsList" class="mt-2"></div>
+        </div>
     </div>
 
-    <!-- Sekcja stawiania zakładów -->
-    <div id="bet" class="container hidden">
-        <h2>Postaw Zakład</h2>
-        <form id="betForm" onsubmit="placeBet(event)">
-            <div class="form-group">
-                <label>ID Użytkownika:</label>
-                <input type="number" name="id_uzytkownika" required>
+    <!-- Sprawdzanie bilansu -->
+    <div class="section">
+        <h2>Bilans użytkownika</h2>
+        <form id="checkBalanceForm">
+            <div class="mb-3">
+                <input type="number" class="form-control" id="userIdForBalance" placeholder="ID użytkownika">
             </div>
-            <div class="form-group">
-                <label>Wyszukaj mecz:</label>
-                <input type="text" id="matchSearch" oninput="searchMatchesForBet(event)" placeholder="Wpisz nazwę drużyny...">
-            </div>
-            <div class="form-group">
-                <label>Wybierz mecz:</label>
-                <select id="matchSelect" name="match_id" onchange="loadMatchOdds(this.value)" required>
-                    <option value="">Wybierz mecz</option>
-                </select>
-            </div>
-            <div id="oddsContainer" class="odds-list hidden">
-                <h3>Dostępne kursy:</h3>
-                <div id="oddsList"></div>
-            </div>
-            <div class="form-group">
-                <label>Kwota:</label>
-                <input type="number" step="0.01" name="kwota_postawiona" required>
-            </div>
-            <button type="submit">Postaw zakład</button>
+            <button type="submit" class="btn btn-info">Sprawdź bilans</button>
         </form>
-        <div id="betMessage" class="message"></div>
-    </div>
-
-    <!-- Sekcja zarządzania kursami -->
-    <div id="odds" class="container hidden">
-        <h2>Zarządzaj Kursami</h2>
-        <form id="oddsForm" onsubmit="createOdds(event)">
-            <div class="form-group">
-                <label>ID Meczu:</label>
-                <input type="number" name="mecz_id" required>
-            </div>
-            <div class="form-group">
-                <label>Typ kursu:</label>
-                <input type="text" name="nazwa_typu" required>
-            </div>
-            <div class="form-group">
-                <label>Wartość kursu:</label>
-                <input type="number" step="0.01" name="kurs" required>
-            </div>
-            <button type="submit">Dodaj kurs</button>
-        </form>
-        <div id="oddsMessage" class="message"></div>
-    </div>
-
-    <!-- Sekcja rozliczania meczu -->
-    <div id="settle" class="container hidden">
-        <h2>Rozlicz Mecz</h2>
-        <form id="settleForm" onsubmit="settleMatch(event)">
-            <div class="form-group">
-                <label>ID Meczu:</label>
-                <input type="number" name="id_meczu" required>
-            </div>
-            <button type="submit">Rozlicz mecz</button>
-        </form>
-        <div id="settleMessage" class="message"></div>
+        <div id="balanceResults" class="mt-2"></div>
     </div>
 
     <script>
         const API_URL = 'http://localhost:5000/api';
-        let matchesCache = [];
 
-        function showSection(sectionId) {
-            document.querySelectorAll('.container').forEach(container => {
-                container.classList.add('hidden');
-            });
-            document.getElementById(sectionId).classList.remove('hidden');
-        }
-
-        function showMessage(elementId, message, isError = false) {
-            const messageElement = document.getElementById(elementId);
-            messageElement.textContent = message;
-            messageElement.className = `message ${isError ? 'error' : 'success'}`;
-        }
-
-        async function registerUser(event) {
-            event.preventDefault();
-            const formData = new FormData(event.target);
+        // Tworzenie konta
+        document.getElementById('createAccountForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                nazwa: document.getElementById('nazwa').value,
+                haslo: document.getElementById('haslo').value,
+                email: document.getElementById('email').value
+            };
+            
             try {
                 const response = await fetch(`${API_URL}/konto`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(Object.fromEntries(formData)),
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
                 });
-                const data = await response.json();
-                showMessage('registerMessage', data.message, !response.ok);
+                const result = await response.json();
+                alert(result.message || result.error);
             } catch (error) {
-                showMessage('registerMessage', 'Wystąpił błąd podczas rejestracji', true);
+                alert('Wystąpił błąd: ' + error);
+            }
+        });
+
+        // Pobieranie listy użytkowników
+        async function getAccounts() {
+            try {
+                const response = await fetch(`${API_URL}/konto`);
+                const users = await response.json();
+                const usersList = document.getElementById('accountsList');
+                usersList.innerHTML = `<table class="table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nazwa</th>
+                            <th>Email</th>
+                            <th>Balans</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${users.map(user => `
+                            <tr>
+                                <td>${user.id_uzytkownika}</td>
+                                <td>${user.nazwa}</td>
+                                <td>${user.email}</td>
+                                <td>${user.balans}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>`;
+            } catch (error) {
+                alert('Wystąpił błąd: ' + error);
             }
         }
 
-        let searchTimeout;
-        async function searchMatchesForBet(event) {
-            clearTimeout(searchTimeout);
-            const searchQuery = event.target.value;
+        // Usuwanie konta
+        document.getElementById('deleteAccountForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userId = document.getElementById('deleteUserId').value;
             
-            if (searchQuery.length < 2) {
-                document.getElementById('matchSelect').innerHTML = '<option value="">Wybierz mecz</option>';
-                return;
-            }
-
-            searchTimeout = setTimeout(async () => {
-                try {
-                    const response = await fetch(`${API_URL}/konto/find_match?search=${encodeURIComponent(searchQuery)}`);
-                    const data = await response.json();
-                    matchesCache = data;
-                    
-                    const select = document.getElementById('matchSelect');
-                    select.innerHTML = '<option value="">Wybierz mecz</option>';
-                    
-                    data.forEach(match => {
-                        const option = document.createElement('option');
-                        option.value = match.id_meczu;
-                        option.textContent = `${match.gospodarz} vs ${match.gosc} - ${new Date(match.data_meczu).toLocaleDateString()}`;
-                        select.appendChild(option);
-                    });
-                } catch (error) {
-                    console.error('Błąd podczas wyszukiwania meczów:', error);
-                }
-            }, 300);
-        }
-
-        async function loadMatchOdds(matchId) {
-            if (!matchId) {
-                document.getElementById('oddsContainer').classList.add('hidden');
-                return;
-            }
-
             try {
-                const response = await fetch(`${API_URL}/mecz/${matchId}/kursy`);
-                const odds = await response.json();
-                
-                const oddsList = document.getElementById('oddsList');
-                oddsList.innerHTML = '';
-                
-                odds.forEach(odd => {
-                    const oddsItem = document.createElement('div');
-                    oddsItem.className = 'odds-item';
-                    oddsItem.innerHTML = `
-                        <input type="radio" name="id_kursu" value="${odd.id}" required>
-                        <span>${odd.nazwa_typu}</span>
-                        <span class="odds-value">Kurs: ${odd.kurs}</span>
-                    `;
-                    oddsList.appendChild(oddsItem);
+                const response = await fetch(`${API_URL}/konto/${userId}`, {
+                    method: 'DELETE'
                 });
-                
-                document.getElementById('oddsContainer').classList.remove('hidden');
+                const result = await response.json();
+                alert(result.message || result.error);
             } catch (error) {
-                console.error('Błąd podczas pobierania kursów:', error);
+                alert('Wystąpił błąd: ' + error);
             }
-        }
+        });
 
-        async function searchMatches(event) {
-            event.preventDefault();
-            const formData = new FormData(event.target);
-            const searchQuery = formData.get('search');
+        // Reset hasła
+        document.getElementById('resetPasswordForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                nazwa: document.getElementById('resetUsername').value,
+                new_password: document.getElementById('newPassword').value
+            };
+            
             try {
-                const response = await fetch(`${API_URL}/konto/find_match?search=${encodeURIComponent(searchQuery)}`);
-                const data = await response.json();
-                const resultsDiv = document.getElementById('searchResults');
-                resultsDiv.innerHTML = '';
-                
-                if (Array.isArray(data)) {
-                    data.forEach(match => {
-                        const matchCard = document.createElement('div');
-                        matchCard.className = 'match-card';
-                        matchCard.innerHTML = `
-                            <p>Gospodarz: ${match.gospodarz}</p>
-                            <p>Gość: ${match.gosc}</p>
-                            <p>Data: ${new Date(match.data_meczu).toLocaleDateString()}</p>
-                            <p>Status: ${match.status}</p>
-                            <p>Wynik: ${match.gole_gospodarzy}:${match.gole_gosci}</p>
-                        `;
-                        resultsDiv.appendChild(matchCard);
-                    });
-                } else {
-                    resultsDiv.innerHTML = '<p>Nie znaleziono meczów</p>';
-                }
+                const response = await fetch(`${API_URL}/konto/reset_password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                alert(result.message || result.error);
             } catch (error) {
-                showMessage('searchResults', 'Wystąpił błąd podczas wyszukiwania', true);
+                alert('Wystąpił błąd: ' + error);
             }
-        }
-        async function placeBet(event) {
-            event.preventDefault();
-            const formData = new FormData(event.target);
+        });
+
+        // Wyszukiwanie meczu
+        document.getElementById('findMatchForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = document.getElementById('searchQuery').value;
+            
+            try {
+                const response = await fetch(`${API_URL}/konto/find_match?search=${encodeURIComponent(query)}`);
+                const matches = await response.json();
+                const resultsDiv = document.getElementById('matchResults');
+                resultsDiv.innerHTML = `<table class="table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Gospodarz</th>
+                            <th>Gość</th>
+                            <th>Data</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${matches.map(match => `
+                            <tr>
+                                <td>${match.id_meczu}</td>
+                                <td>${match.gospodarz}</td>
+                                <td>${match.gosc}</td>
+                                <td>${new Date(match.data_meczu).toLocaleString()}</td>
+                                <td>${match.status}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>`;
+            } catch (error) {
+                alert('Wystąpił błąd: ' + error);
+            }
+        });
+
+        // Stawianie zakładu
+        document.getElementById('placeBetForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                id_uzytkownika: parseInt(document.getElementById('betUserId').value),
+                id_kursu: parseInt(document.getElementById('betOddsId').value),
+                kwota_postawiona: parseFloat(document.getElementById('betAmount').value)
+            };
+            
             try {
                 const response = await fetch(`${API_URL}/zaklad`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        id_uzytkownika: parseInt(formData.get('id_uzytkownika')),
-                        id_kursu: parseInt(formData.get('id_kursu')),
-                        kwota_postawiona: parseFloat(formData.get('kwota_postawiona'))
-                    }),
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
                 });
-                const data = await response.json();
-                showMessage('betMessage', data.message, !response.ok);
+                const result = await response.json();
+                alert(result.message || result.error);
             } catch (error) {
-                showMessage('betMessage', 'Wystąpił błąd podczas stawiania zakładu', true);
+                alert('Wystąpił błąd: ' + error);
             }
-        }
-        async function createOdds(event) {
-            event.preventDefault();
-            const formData = new FormData(event.target);
-            const mecz_id = formData.get('mecz_id');
-            try {
-                const response = await fetch(`${API_URL}/mecz/${mecz_id}/kursy`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        nazwa_typu: formData.get('nazwa_typu'),
-                        kurs: formData.get('kurs')
-                    }),
-                });
-                const data = await response.json();
-                showMessage('oddsMessage', data.message, !response.ok);
-            } catch (error) {
-                showMessage('oddsMessage', 'Wystąpił błąd podczas dodawania kursu', true);
-            }
-        }
+        });
 
-        async function settleMatch(event) {
-            event.preventDefault();
-            const formData = new FormData(event.target);
+        // Rozliczanie meczu
+        document.getElementById('settleMatchForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                id_meczu: parseInt(document.getElementById('matchId').value)
+            };
+            
             try {
                 const response = await fetch(`${API_URL}/rozlicz_mecz`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        id_meczu: formData.get('id_meczu')
-                    }),
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
                 });
-                const data = await response.json();
-                showMessage('settleMessage', data.message, !response.ok);
+                const result = await response.json();
+                alert(result.message || result.error);
             } catch (error) {
-                showMessage('settleMessage', 'Wystąpił błąd podczas rozliczania meczu', true);
+                alert('Wystąpił błąd: ' + error);
             }
-        }
+        });
 
-        // Inicjalizacja przy załadowaniu strony
-        document.addEventListener('DOMContentLoaded', function() {
-            // Pokazuje domyślną sekcję (rejestracja)
-            showSection('register');
+        // Dodawanie kursu
+        document.getElementById('addOddsForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const matchId = document.getElementById('matchIdForOdds').value;
+            const data = {
+                nazwa_typu: document.getElementById('oddsType').value,
+                kurs: parseFloat(document.getElementById('oddsValue').value)
+            };
             
-            // Dodaje obsługę błędów dla wszystkich formularzy
-            const forms = document.querySelectorAll('form');
-            forms.forEach(form => {
-                form.addEventListener('submit', function(event) {
-                    const submitButton = form.querySelector('button[type="submit"]');
-                    submitButton.disabled = true;
-                    submitButton.textContent = 'Przetwarzanie...';
-                    
-                    // Przywraca stan przycisku po zakończeniu operacji
-                    setTimeout(() => {
-                        submitButton.disabled = false;
-                        submitButton.textContent = submitButton.originalText || 'Wyślij';
-                    }, 2000);
+            try {
+                const response = await fetch(`${API_URL}/mecz/${matchId}/kursy`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
                 });
-            });
+                const result = await response.json();
+                alert(result.message || result.error);
+            } catch (error) {
+                alert('Wystąpił błąd: ' + error);
+            }
+        });
+
+        // Pobieranie listy kursów
+        document.getElementById('getOddsForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const matchId = document.getElementById('matchIdForList').value;
+            
+            try {
+                const response = await fetch(`${API_URL}/mecz/${matchId}/kursy`);
+                const odds = await response.json();
+                const oddsListDiv = document.getElementById('oddsList');
+                oddsListDiv.innerHTML = `<table class="table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Typ</th>
+                            <th>Kurs</th>
+                            <th>Data utworzenia</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${odds.map(odd => `
+                            <tr>
+                                <td>${odd.id}</td>
+                                <td>${odd.nazwa_typu}</td>
+                                <td>${odd.kurs}</td>
+                                <td>${new Date(odd.data_utworzenia).toLocaleString()}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>`;
+            } catch (error) {
+                alert('Wystąpił błąd: ' + error);
+            }
+        });
+
+        // Sprawdzanie bilansu
+        document.getElementById('checkBalanceForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userId = document.getElementById('userIdForBalance').value;
+            
+            try {
+                const response = await fetch(`${API_URL}/konto/${userId}/bilans`);
+                const balance = await response.json();
+                const balanceDiv = document.getElementById('balanceResults');
+                
+                // Wyświetlanie transakcji
+                let transactionsHtml = `
+                    <h4 class="mt-3">Transakcje</h4>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Typ operacji</th>
+                                <th>Suma kwot</th>
+                                <th>Liczba transakcji</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${balance.transakcje.map(t => `
+                                <tr>
+                                    <td>${t.typ_operacji}</td>
+                                    <td>${t.suma_kwota}</td>
+                                    <td>${t.liczba_transakcji}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>`;
+
+                // Wyświetlanie statystyk
+                let statsHtml = `
+                    <h4 class="mt-3">Statystyki zakładów</h4>
+                    <table class="table">
+                        <tr>
+                            <td>Wygrane zakłady:</td>
+                            <td>${balance.statystyki.wygrane_zaklady}</td>
+                        </tr>
+                        <tr>
+                            <td>Przegrane zakłady:</td>
+                            <td>${balance.statystyki.przegrane_zaklady}</td>
+                        </tr>
+                        <tr>
+                            <td>Suma wygranych:</td>
+                            <td>${balance.statystyki.suma_wygranych}</td>
+                        </tr>
+                        <tr>
+                            <td>Suma przegranych:</td>
+                            <td>${balance.statystyki.suma_przegranych}</td>
+                        </tr>
+                        <tr>
+                            <td>Procent wygranych:</td>
+                            <td>${balance.statystyki.procent_wygranych}%</td>
+                        </tr>
+                    </table>`;
+
+                // Wyświetlanie historii operacji
+                let historyHtml = `
+                    <h4 class="mt-3">Historia operacji</h4>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Typ operacji</th>
+                                <th>Kwota</th>
+                                <th>Zmiana balansu</th>
+                                <th>Saldo po operacji</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${balance.ostatnie_operacje.map(op => `
+                                <tr>
+                                    <td>${new Date(op.data).toLocaleString()}</td>
+                                    <td>${op.typ_operacji}</td>
+                                    <td>${op.kwota}</td>
+                                    <td>${op.zmiana_balansu}</td>
+                                    <td>${op.saldo_po_operacji}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>`;
+
+                balanceDiv.innerHTML = transactionsHtml + statsHtml + historyHtml;
+            } catch (error) {
+                alert('Wystąpił błąd: ' + error);
+            }
         });
     </script>
 </body>
