@@ -93,8 +93,6 @@ CREATE TABLE `Historia_Salda`(
 ALTER TABLE
     `Historia_Salda` ADD CONSTRAINT `historia_salda_id_transakcji_foreign` FOREIGN KEY(`id_transakcji`) REFERENCES `Transakcje`(`id`);
 ALTER TABLE
-    `Mecz` ADD CONSTRAINT `mecz_data_meczu_foreign` FOREIGN KEY(`data_meczu`) REFERENCES `Kursy_Meczu`(`id_meczu`);
-ALTER TABLE
     `Zdarzenia_w_meczu` ADD CONSTRAINT `zdarzenia_w_meczu_id_zawodnika_foreign` FOREIGN KEY(`id_zawodnika`) REFERENCES `Zawodnicy`(`id_zawodnika`);
 ALTER TABLE
     `Zdarzenia_w_meczu` ADD CONSTRAINT `zdarzenia_w_meczu_id_meczu_foreign` FOREIGN KEY(`id_meczu`) REFERENCES `Mecz`(`id_meczu`);

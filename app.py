@@ -1,13 +1,12 @@
 from flask import Flask, request, jsonify
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, DecimalException
 from flask_cors import CORS
 import bcrypt
 import mysql.connector
 from difflib import SequenceMatcher
 from email.mime.text import MIMEText
 import smtplib
-import uuid
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 
 app = Flask(__name__)
@@ -69,7 +68,7 @@ class Uzytkownik:
         try:
             conn = get_db_connection()
             cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT * FROM Uzytkownik")
+            cursor.execute("SELECT * FROM uzytkownik_szczegoly")
             users = cursor.fetchall()
             return [Uzytkownik(**user) for user in users]
         finally:
@@ -92,16 +91,17 @@ class Uzytkownik:
                      self.rola, self.status_weryfikacji, self.id_uzytkownika))
             #Tworzy nowego użytkonika
             else:
-                cursor.execute("""
-                    INSERT INTO Uzytkownik (nazwa, haslo, email, balans, 
-                                          data_utworzenia, rola, status_weryfikacji)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (self.nazwa, self.hash_password(self.haslo), self.email, self.balans,
-                     self.data_utworzenia, self.rola, self.status_weryfikacji))
-                self.id_uzytkownika = cursor.lastrowid
+                args = (self.nazwa, self.hash_password(self.haslo), self.email, self.balans, self.rola, self.status_weryfikacji)
+                result_args = cursor.callproc('tworzenie_uzytkownika', args)
+
+                for result in cursor.stored_results():
+                    row = result.fetchone()
+                    if row:
+                        self.id_uzytkownika = row[0]
                 
             conn.commit()
             return self.id_uzytkownika
+
         except mysql.connector.Error as err:
             raise Exception(f"Database error: {err}")
         finally:
@@ -114,7 +114,7 @@ class Uzytkownik:
         try:
             conn = get_db_connection()
             cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT * FROM Uzytkownik WHERE id_uzytkownika = %s", (user_id,))
+            cursor.execute("SELECT * FROM uzytkownik_szczegoly WHERE id_uzytkownika = %s", (user_id,))
             user = cursor.fetchone()
             return Uzytkownik(**user) if user else None
         finally:
@@ -126,7 +126,7 @@ class Uzytkownik:
         try:
             conn = get_db_connection()
             cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT * FROM Uzytkownik WHERE nazwa = %s", (nazwa,))
+            cursor.execute("SELECT * FROM uzytkownik_szczegoly WHERE nazwa = %s", (nazwa,))
             user = cursor.fetchone()
             return Uzytkownik(**user) if user else None
         finally:
@@ -137,7 +137,7 @@ class Uzytkownik:
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM Uzytkownik WHERE id_uzytkownika = %s", (self.id_uzytkownika,))
+            cursor.callproc('usun_uzytkownika', (self.id_uzytkownika))
             conn.commit()
         finally:
             cursor.close()
@@ -190,8 +190,13 @@ def verify_account(token):
         if not user:
             return jsonify({'error': 'Użytkownik nie istnieje'}), 404
 
-        user.status_weryfikacji = True
-        user.save()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.callproc('aktualizacja_statusu-weryfikacji', (user.id_uzytkownika,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
         return jsonify({'message': 'Konto zostało pomyślnie zweryfikowane'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -229,10 +234,7 @@ def resetPassword():
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE Uzytkownik SET haslo = %s WHERE id_uzytkownika = %s",
-            (hashed_password, user.id_uzytkownika)
-        )
+        cursor.callproc('reset_hasla', (data['nazwa'], hashed_password))
         conn.commit()
         cursor.close()
         conn.close()
@@ -297,69 +299,32 @@ def find_match():
     if not search_query:
         return jsonify({'error': 'Nie wpisano żadnego zapytania'}), 400
 
-    search_terms = search_query.strip().split()
-    
     try:
-        with get_db_connection() as conn:
-            with conn.cursor(dictionary=True) as cursor:
-                base_query = """
-                SELECT DISTINCT
-                    mecz.id_meczu,
-                    druzyna_gospodarz.nazwa AS gospodarz,
-                    druzyna_gosc.nazwa AS gosc,
-                    mecz.data_meczu,
-                    mecz.gole_gospodarzy,
-                    mecz.gole_gosci,
-                    mecz.status
-                FROM Mecz mecz
-                JOIN Druzyny druzyna_gospodarz ON mecz.id_gospodarzy = druzyna_gospodarz.id_druzyny
-                JOIN Druzyny druzyna_gosc ON mecz.id_gosci = druzyna_gosc.id_druzyny
-                WHERE """
-                
-                if len(search_terms) == 1:
-                    query = base_query + "(druzyna_gospodarz.nazwa LIKE %s OR druzyna_gosc.nazwa LIKE %s)"
-                    cursor.execute(query, (f"%{search_terms[0]}%", f"%{search_terms[0]}%"))
-                else:
-                    conditions = []
-                    params = []
-                    for term in search_terms:
-                        conditions.append("(druzyna_gospodarz.nazwa LIKE %s OR druzyna_gosc.nazwa LIKE %s)")
-                        params.extend([f"%{term}%", f"%{term}%"])
-                    query = base_query + " AND ".join(conditions)
-                    cursor.execute(query, tuple(params))
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.callproc('znajdz_mecz', [search_query])
 
-                matches = cursor.fetchall()
+        for result in cursor.stored_results():
+            matches = result.fetchall()
+            
+        cursor.close()
+        conn.close()
 
-                def similarity(s1, s2):
-                    return SequenceMatcher(None, s1.lower(), s2.lower()).ratio()
-
-                filtered_matches = []
-                for match in matches:
-                    score = max(
-                        max(similarity(term, match['gospodarz']) for term in search_terms),
-                        max(similarity(term, match['gosc']) for term in search_terms)
-                    )
-                    if score > 0.6: 
-                        match['similarity'] = score
-                        filtered_matches.append(match)
-
-                return jsonify(sorted(filtered_matches, key=lambda x: x['similarity'], reverse=True))
-                
-    except mysql.connector.Error as err:
-        return jsonify({'error': 'Błąd bazy danych'}), 500
+        return jsonify(matches), 200
+    
     except Exception as e:
-        return jsonify({'error': 'Błąd'}), 500
+        return jsonify({'error': str(e)}), 500
 
 
 
 #-------------------------------------------------------------
 #STAWIANIE ZAKŁADÓW, NIE WIEM CZY DZIAŁA, TRZEBA POTESTOWAĆ XD
 
-@app.route("/api/zaklad", methods=["POST","OPTIONS"])
+@app.route("/api/zaklad", methods=["POST", "OPTIONS"])
 def postawZaklad():
     if request.method == "OPTIONS":
         return '', 200
-        
+
     print("===== POCZĄTEK PROCESU ZAKŁADU =====")
     data = request.json
     print(f"Otrzymane dane: {data}")
@@ -367,12 +332,10 @@ def postawZaklad():
     cursor = None
     
     try:
-        # Sprawdzenie czy request.json nie jest None
         if data is None:
             print("Błąd: Brak danych w request.json")
             return jsonify({"error": "Brak danych w żądaniu"}), 400
 
-        # Walidacja pól (bez zmian)
         required_fields = ["id_uzytkownika", "id_kursu", "kwota_postawiona"]
         missing_fields = [field for field in required_fields if field not in data]
         
@@ -383,134 +346,95 @@ def postawZaklad():
 
         if missing_fields:
             return jsonify({"error": f"Brak wymaganych pól w żądaniu: {', '.join(missing_fields)}"}), 400
-        
-        # Konwersja danych (bez zmian)
+
+        #Sprawdzamy kwotę postawioną
         try:
-            id_uzytkownika = int(data["id_uzytkownika"])
-            id_kursu = int(data["id_kursu"])
-            kwota_postawiona = Decimal(str(data["kwota_postawiona"]))
-            
-            print(f"Przekonwertowane dane:")
-            print(f"- id_uzytkownika: {id_uzytkownika}")
-            print(f"- id_kursu: {id_kursu}")
-            print(f"- kwota_postawiona: {kwota_postawiona}")
-            
-            if kwota_postawiona <= 0:
+            kwota = Decimal(str(data["kwota_postawiona"]))
+            if kwota <= 0:
                 return jsonify({"error": "Kwota zakładu musi być większa od 0"}), 400
-                
-        except (ValueError, TypeError, Decimal.InvalidOperation) as e:
-            return jsonify({"error": f"Nieprawidłowy format danych: {str(e)}"}), 400
-
-        # Sprawdzenie użytkownika (bez zmian)
-        uzytkownik = Uzytkownik.get_by_id(id_uzytkownika)
-        if not uzytkownik:
-            return jsonify({"error": "Nie znaleziono użytkownika o podanym ID"}), 404
-
-        if uzytkownik.balans < kwota_postawiona:
-            return jsonify({
-                "error": "Niewystarczające środki na koncie",
-                "dostepne_srodki": str(uzytkownik.balans),
-                "wymagane": str(kwota_postawiona)
-            }), 400
-
+        except (ValueError, DecimalException):
+            return jsonify({"error": "Nieprawidłowy format kwoty"}), 400
+        
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        # Pobierz informacje o kursie i meczu
+        #Sprawdzamy czy kurs istnieje i czy jest aktywny
         cursor.execute("""
-            SELECT 
-                km.*,
-                m.status as status_meczu,
-                m.id_meczu,
-                m.data_meczu,
-                CONCAT(d1.nazwa, ' vs ', d2.nazwa) as nazwa_meczu
+            SELECT km.*, m.status as status_meczu 
             FROM Kursy_Meczu km
             JOIN Mecz m ON km.id_meczu = m.id_meczu
-            JOIN Druzyny d1 ON m.id_gospodarzy = d1.id_druzyny
-            JOIN Druzyny d2 ON m.id_gosci = d2.id_druzyny
-            WHERE km.id = %s
-        """, (id_kursu,))
+            WHERE km.id = %s AND km.status = TRUE
+        """, (data["id_kursu"],))
         
-        kurs_info = cursor.fetchone()
-        print(f"Informacje o kursie: {kurs_info}")
+        kurs = cursor.fetchone()
+        if not kurs:
+            return jsonify({"error": "Wybrany kurs nie istnieje lub jest nieaktywny"}), 400
         
-        if not kurs_info:
-            return jsonify({"error": "Nie znaleziono wybranego kursu"}), 404
-            
-        if not kurs_info['status']:
-            return jsonify({"error": "Ten kurs nie jest już aktywny"}), 400
+        if kurs['status_meczu'].lower() != 'oczekujący':
+            return jsonify({"error": "Nie można postawić zakładu na ten mecz"}), 400
 
-        # Sprawdzenie czasu meczu
-        current_time = datetime.now()
-        match_time = kurs_info['data_meczu']
+        #Sprawdzenie czy użytkownik istnieje
+        cursor.execute("SELECT balans FROM Uzytkownik WHERE id_uzytkownika = %s", 
+                      (data["id_uzytkownika"],))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({"error": "Użytkownik nie istnieje"}), 404
+
+        args = (data["id_uzytkownika"], data["id_kursu"], kwota, 0)
+
+        result_args = cursor.callproc('postaw_zaklad', args)
+        conn.commit()
+
+        id_zakladu = result_args[3]
+
+        #Pobieranie informacji o zakładzie
+        cursor.execute("""
+            SELECT 
+                z.*,
+                m.status as status_meczu,
+                CONCAT(dg.nazwa, ' vs ', dgos.nazwa) as nazwa_meczu,
+                km.nazwa_typu,
+                km.kurs,
+                DATE_FORMAT(z.data_postawienia, '%%Y-%%m-%%d %%H:%%i:%%s') as data_postawienia_format
+            FROM Zaklad z
+            JOIN Mecz m ON z.id_meczu = m.id_meczu
+            JOIN Druzyny dg ON m.id_gospodarzy = dg.id_druzyny
+            JOIN Druzyny dgos ON m.id_gosci = dgos.id_druzyny
+            JOIN Kursy_Meczu km ON z.kurs_meczu = km.id
+            WHERE z.id_zakladu = %s
+        """, (id_zakladu,))
+
+        zaklad = cursor.fetchone()
         
-        if current_time >= match_time:
-            return jsonify({
-                "error": f"Nie można postawić zakładu - mecz {kurs_info['nazwa_meczu']} już się rozpoczął lub zakończył"
-            }), 400
+        if not zaklad:
+            raise Exception("Nie udało się pobrać informacji o postawionym zakładzie")
 
-        # Sprawdzenie statusu - niewrażliwe na wielkość liter
-        allowed_statuses = ['oczekujący', 'nowy', 'zaplanowany']
-        if kurs_info['status_meczu'].lower() not in allowed_statuses:
-            return jsonify({
-                "error": f"Nie można postawić zakładu - mecz {kurs_info['nazwa_meczu']} ma niedozwolony status: {kurs_info['status_meczu']}"
-            }), 400
+        #Konwersja decimal na string dla JSON
+        zaklad['kwota_postawiona'] = str(zaklad['kwota_postawiona'])
+        zaklad['potencjalna_wygrana'] = str(zaklad['potencjalna_wygrana'])
+        zaklad['kurs'] = str(zaklad['kurs'])
 
-        # Obliczenie potencjalnej wygranej
-        potencjalna_wygrana = kwota_postawiona * Decimal(str(kurs_info['kurs']))
+        return jsonify({
+            "message": "Zakład został pomyślnie postawiony",
+            "zaklad": zaklad
+        }), 201
 
-
-        try:
-            # Zapis zakładu
-            cursor.execute(
-                """INSERT INTO Zaklad 
-                (id_meczu, id_uzytkownika, wynik, kwota_postawiona, 
-                    potencjalna_wygrana, status_zakladu, data_postawienia, kurs_meczu) 
-                VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s)""",
-                (kurs_info['id_meczu'], id_uzytkownika, False, kwota_postawiona, 
-                potencjalna_wygrana, "Oczekujący", id_kursu)  # Zmiana z kurs_info['kurs'] na id_kursu
-            )
-            id_zakladu = cursor.lastrowid
-
-            # Aktualizacja salda użytkownika
-            nowy_balans = uzytkownik.balans - kwota_postawiona
-            cursor.execute(
-                "UPDATE Uzytkownik SET balans = %s WHERE id_uzytkownika = %s",
-                (nowy_balans, id_uzytkownika)
-            )
-
-            zaklad_transakcje(cursor, id_uzytkownika, kwota_postawiona, nowy_balans, "Postawienie zakładu")
-
-            conn.commit()
-            print("Zakład został pomyślnie zapisany")
-
-            return jsonify({
-                "message": "Zakład został pomyślnie postawiony",
-                "szczegoly": {
-                    "id_zakladu": id_zakladu,
-                    "nowy_balans": str(nowy_balans),
-                    "potencjalna_wygrana": str(potencjalna_wygrana),
-                    "mecz": kurs_info['nazwa_meczu'],
-                    "typ_zakladu": kurs_info['nazwa_typu'],
-                    "kurs": str(kurs_info['kurs'])
-                }
-            }), 201
-        
-        except Exception as inner_e:
-            conn.rollback()
-            raise inner_e
-        
-    except Exception as e:
-        print(f"Wystąpił nieoczekiwany błąd: {str(e)}")
+    except mysql.connector.Error as e:
         if conn:
             conn.rollback()
-        return jsonify({"error": f"Wystąpił błąd podczas przetwarzania zakładu: {str(e)}"}), 500
+        print(f"Błąd MySQL: {str(e)}")
+        return jsonify({"error": "Wystąpił błąd bazy danych"}), 500
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"Błąd: {str(e)}")
+        return jsonify({"error": str(e)}), 500
     finally:
         if cursor:
             cursor.close()
         if conn:
             conn.close()
-        print("===== KONIEC PROCESU ZAKŁADU =====")
+
 #rozliczanie
 
 @app.route("/api/rozlicz_mecz", methods=["POST"])
@@ -523,120 +447,41 @@ def rozliczMecz():
         if not data or "id_meczu" not in data:
             return jsonify({"error": "Brak wymaganego pola id_meczu"}), 400
             
-        id_meczu = int(data["id_meczu"])
+        args = [data["id_meczu"]]
         
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        conn.start_transaction()
+        cursor.callproc('rozlicz_mecz', args)
+        conn.commit()
 
-        # Sprawdź czy mecz istnieje i pobierz jego wynik
+        # Pobierz informacji o meczu
         cursor.execute("""
-            SELECT m.id_meczu, m.gole_gospodarzy, m.gole_gosci, m.status,
-                   d1.nazwa as gospodarz, d2.nazwa as gosc
+            SELECT m.*, 
+                   dg.nazwa as gospodarz, 
+                   dgos.nazwa as gosc,
+                   (SELECT COUNT(*) FROM Zaklad WHERE id_meczu = m.id_meczu) as liczba_zakladow
             FROM Mecz m
-            JOIN Druzyny d1 ON m.id_gospodarzy = d1.id_druzyny
-            JOIN Druzyny d2 ON m.id_gosci = d2.id_druzyny
+            JOIN Druzyny dg ON m.id_gospodarzy = dg.id_druzyny
+            JOIN Druzyny dgos ON m.id_gosci = dgos.id_druzyny
             WHERE m.id_meczu = %s
-        """, (id_meczu,))
+        """, (data["id_meczu"],))
         
         mecz = cursor.fetchone()
-        
-        if not mecz:
-            return jsonify({"error": "Mecz nie istnieje"}), 404
-
-        if mecz['status'] == 'Zakończony':
-            return jsonify({"error": "Mecz został już rozliczony"}), 400
-
-        # Pobierz wszystkie zakłady dla tego meczu
-        cursor.execute("""
-            SELECT z.*, km.nazwa_typu, km.kurs 
-            FROM Zaklad z
-            JOIN Kursy_Meczu km ON z.kurs_meczu = km.id
-            WHERE z.id_meczu = %s AND z.status_zakladu = 'Oczekujący'
-        """, (id_meczu,))
-        
-        zaklady = cursor.fetchall()
-
-        for zaklad in zaklady:
-            wygrany = False
-            
-            # Określenie wyniku zakładu
-            if (zaklad['nazwa_typu'].lower() == 'zwycięstwo gospodarzy' and 
-                mecz['gole_gospodarzy'] > mecz['gole_gosci']):
-                wygrany = True
-            elif (zaklad['nazwa_typu'].lower() == 'remis' and 
-                  mecz['gole_gospodarzy'] == mecz['gole_gosci']):
-                wygrany = True
-            elif (zaklad['nazwa_typu'].lower() == 'zwycięstwo gości' and 
-                  mecz['gole_gospodarzy'] < mecz['gole_gosci']):
-                wygrany = True
-
-            status_zakladu = "Wygrany" if wygrany else "Przegrany"
-            
-            # Aktualizuj status zakładu
-            cursor.execute("""
-                UPDATE Zaklad 
-                SET status_zakladu = %s,
-                    wynik = %s
-                WHERE id_zakladu = %s
-            """, (status_zakladu, wygrany, zaklad['id_zakladu']))
-
-            # Wypłata wygranej
-            if wygrany:
-                cursor.execute("""SELECT balans FROM Uzytkownik WHERE id_uzytkownika = %s""", (zaklad['id_uzytkownika'],))
-
-                current_balance = cursor.fetchone()['balans']
-
-                new_balance = current_balance + zaklad['potencjalna_wygrana']
-
-                cursor.execute("""UPDATE Uzytkownik SET balans = %s WHERE id_uzytkownika = %s""", (new_balance, zaklad['id_uzytkownika']))
-
-                zaklad_transakcje(cursor, zaklad['id_uzytkownika'], zaklad['potencjalna_wygrana'], new_balance, "Wygrana zakładu")
-            
-            else:
-                cursor.execute("""SELECT balans FROM Uzytkownik WHERE id_uzytkownika = %s""", (zaklad['id_uzytkownika'],))
-
-                current_balance = cursor.fetchone()['balans']
-
-                zaklad_transakcje(cursor, zaklad['id_uzytkownika'], 0, current_balance, "Przegrana zakładu")
-
-            # Dodaj wpis do historii (upewnij się, że nazwa tabeli jest prawidłowa)
-            # cursor.execute("""
-            #     INSERT INTO Historia_Zakladow 
-            #         (id_zakladu, id_uzytkownika, status) 
-            #     VALUES (%s, %s, %s)
-            # """, (zaklad['id_zakladu'], zaklad['id_uzytkownika'], status_zakladu))
-
-        # Zaktualizuj status meczu
-        cursor.execute("""
-            UPDATE Mecz 
-            SET status = 'Zakończony',
-                zwyciestwo_gospodarzy = %s,
-                zwyciestwo_gosci = %s
-            WHERE id_meczu = %s
-        """, (
-            mecz['gole_gospodarzy'] > mecz['gole_gosci'],
-            mecz['gole_gospodarzy'] < mecz['gole_gosci'],
-            id_meczu
-        ))
-
-        conn.commit()
         
         return jsonify({
             "message": "Mecz został rozliczony pomyślnie",
             "szczegoly": {
                 "mecz": f"{mecz['gospodarz']} vs {mecz['gosc']}",
                 "wynik": f"{mecz['gole_gospodarzy']}:{mecz['gole_gosci']}",
-                "liczba_rozliczonych_zakladow": len(zaklady)
+                "liczba_rozliczonych_zakladow": mecz['liczba_zakladow']
             }
         }), 200
-
+        
     except Exception as e:
-        print(f"Błąd podczas rozliczania meczu: {str(e)}")  # Dodanie logowania błędu
         if conn:
             conn.rollback()
-        return jsonify({"error": f"Wystąpił błąd podczas rozliczania meczu: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 500
     finally:
         if cursor:
             cursor.close()
@@ -658,31 +503,14 @@ def create_match_odds(mecz_id):
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Sprawdź czy mecz istnieje
-        cursor.execute("SELECT id_meczu FROM Mecz WHERE id_meczu = %s", (mecz_id,))
-        if not cursor.fetchone():
-            return jsonify({'error': 'Mecz nie istnieje'}), 404
-            
-        # Sprawdź czy taki typ kursu już istnieje dla tego meczu
-        cursor.execute("""
-            SELECT id FROM Kursy_Meczu 
-            WHERE id_meczu = %s AND nazwa_typu = %s AND status = TRUE
-        """, (mecz_id, nazwa_typu))
-        if cursor.fetchone():
-            return jsonify({'error': 'Ten typ kursu już istnieje dla tego meczu'}), 400
-            
-        # Dodaj kurs
-        cursor.execute(
-            """INSERT INTO Kursy_Meczu 
-               (id_meczu, nazwa_typu, kurs, status, data_utworzenia) 
-               VALUES (%s, %s, %s, TRUE, NOW())""",
-            (mecz_id, nazwa_typu, kurs)
-        )
+        args = (mecz_id, nazwa_typu, kurs, 0)
+        result_args = cursor.callproc('dodaj_kurs', args)
+        id_kursu = result_args[3]
         conn.commit()
         
         return jsonify({
             'message': 'Kurs został dodany',
-            'id': cursor.lastrowid
+            'id': id_kursu
         }), 201
         
     except Exception as e:
@@ -699,11 +527,7 @@ def get_match_odds(mecz_id):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        cursor.execute("""
-            SELECT id, nazwa_typu, kurs, status, data_utworzenia
-            FROM Kursy_Meczu
-            WHERE id_meczu = %s AND status = TRUE
-        """, (mecz_id,))
+        cursor.execute("SELECT * FROM aktywne_kursy WHERE id_meczu = %s", (mecz_id,))
         
         kursy = cursor.fetchall()
         return jsonify(kursy), 200
@@ -728,16 +552,8 @@ def update_match_odd(mecz_id, kurs_id):
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute(
-            """UPDATE Kursy_Meczu 
-               SET kurs = %s 
-               WHERE id = %s AND id_meczu = %s AND status = TRUE""",
-            (kurs, kurs_id, mecz_id)
-        )
-        conn.commit()
-        
-        if cursor.rowcount == 0:
-            return jsonify({'error': 'Nie znaleziono aktywnego kursu'}), 404
+        cursor.callproc('aktualizuj_kurs', 
+                       [mecz_id, kurs_id, Decimal(str(data['kurs']))])
             
         return jsonify({'message': 'Kurs został zaktualizowany'}), 200
         
@@ -755,15 +571,10 @@ def deactivate_match_odd(mecz_id, kurs_id):
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute(
-            "UPDATE Kursy_Meczu SET status = FALSE WHERE id = %s AND id_meczu = %s",
-            (kurs_id, mecz_id)
-        )
+        # Wywołanie procedury dezaktywującej kurs
+        cursor.callproc('dezaktywuj_kurs', [mecz_id, kurs_id])
         conn.commit()
         
-        if cursor.rowcount == 0:
-            return jsonify({'error': 'Nie znaleziono kursu'}), 404
-            
         return jsonify({'message': 'Kurs został dezaktywowany'}), 200
         
     except Exception as e:
@@ -777,105 +588,117 @@ def deactivate_match_odd(mecz_id, kurs_id):
 
 #Księgowość------------------------
 
-def transakcja(cursor, kwota, typ_operacji):
-    cursor.execute("""
-        INSERT INTO Transakcje (kwota, typ_operacji, data) 
-        VALUES (%s, %s, NOW())
-    """, (kwota, typ_operacji)
-    )
-    return cursor.lastrowid
-
-def ksiegowosc(cursor, id_uzytkownika, id_transakcji):
-    cursor.execute("""
-        INSERT INTO Ksiegowosc (id_uzytkownika, id_transakcji)
-        VALUES (%s, %s)""",
-        (id_uzytkownika, id_transakcji)
-    )
-
-def historia_salda(cursor, id_uzytkownika, zmiana_balansu, saldo_po_operacji, id_transakcji):
-    cursor.execute("""
-        INSERT INTO Historia_Salda (id_uzytkownika, zmiana_balansu, saldo_po_operacji, id_transakcji)
-        VALUES (%s, %s, %s, %s)""",
-        (id_uzytkownika, zmiana_balansu, saldo_po_operacji, id_transakcji)
-    )
-
-def zaklad_transakcje(cursor, id_uzytkownika, kwota, nowy_balans, typ_operacji):
-    id_transakcji = transakcja(cursor, kwota, typ_operacji)
-
-    ksiegowosc(cursor, id_uzytkownika, id_transakcji)
-
-    historia_salda(cursor, id_uzytkownika, -kwota if typ_operacji == "Postanwienie zakładu" else kwota, nowy_balans, id_transakcji)
-
-    return id_transakcji
-
 @app.route("/api/konto/<int:id_uzytkownika>/bilans", methods=['GET'])
 def balans_status(id_uzytkownika):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-
-        cursor.execute("""
-                       SELECT t.typ_operacji, SUM(t.kwota) as suma_kwota, COUNT(t.id) as liczba_transakcji
-                       FROM Transakcje t
-                       JOIN Ksiegowosc k ON t.id = k.id_transakcji
-                       WHERE k.id_uzytkownika = %s
-                       GROUP BY t.typ_operacji
-                       """, (id_uzytkownika,))
-        transakcje = cursor.fetchall()
         
-        #Pobiranie szczegółowyhcch statystyk dotycących ksiegowosci użytkownika
         cursor.execute("""
-            SELECT
-                COUNT(CASE WHEN z.wynik = TRUE THEN 1 END) as wygrane_zaklady,
-                COUNT(CASE WHEN z.wynik = FALSE THEN 1 END) as przegrane_zaklady,
-                SUM(CASE WHEN z.wynik = TRUE THEN z.potencjalna_wygrana ELSE 0 END) as suma_wygranych,
-                SUM(CASE WHEN z.wynik = FALSE THEN z.kwota_postawiona ELSE 0 END) as suma_przegranych,
-                SUM(z.kwota_postawiona) as suma_postawionych,
-                ROUND(
-                    (COUNT(CASE WHEN z.wynik = TRUE THEN 1 END) * 100.0) / NULLIF(COUNT(*),0), 2) as procent_wygranych
-            FROM Zaklad z
-            WHERE z.id_uzytkownika = %s AND z.status_zakladu IN ('Wygrany', 'Przegrany')""", (id_uzytkownika,))
-        
-        statystyki = cursor.fetchone()
-
-        #pobieranie historii salda
-        cursor.execute("""
-            SELECT 
-                hs.zmiana_balansu,
-                hs.saldo_po_operacji,
-                t.typ_operacji,
-                t.data,
-                t.kwota
-            FROM Historia_Salda hs
-            JOIN Transakcje t ON hs.id_transakcji = t.id
-            WHERE hs.id_uzytkownika = %s
-            ORDER BY t.data DESC
-            LIMIT 10
+            SELECT balans FROM Uzytkownik WHERE id_uzytkownika = %s
         """, (id_uzytkownika,))
-
+        uzytkownik = cursor.fetchone()
+        
+        cursor.execute("""
+            SELECT * FROM statystyki_uzytkownika 
+            WHERE id_uzytkownika = %s
+        """, (id_uzytkownika,))
+        statystyki = cursor.fetchone()
+        
+        if not statystyki:
+            statystyki = {
+                'wygrane_zaklady': 0,
+                'przegrane_zaklady': 0,
+                'suma_wygranych': 0,
+                'suma_przegranych': 0,
+                'suma_postawionych': 0,
+                'procent_wygranych': 0,
+                'balans': uzytkownik['balans'] if uzytkownik else 0
+            }
+        
+        cursor.execute("""
+            SELECT * FROM uzytkownik_historia_balansu
+            WHERE id_uzytkownika = %s
+            ORDER BY data DESC
+            LIMIT 50
+        """, (id_uzytkownika,))
         historia = cursor.fetchall()
-
+        
         return jsonify({
-            'transakcje': transakcje,
             'statystyki': statystyki,
             'ostatnie_operacje': [{
-                'data': h['data'].isoformat(),
+                'data': h['data'].isoformat() if h['data'] else None,
                 'typ_operacji': h['typ_operacji'],
                 'kwota': str(h['kwota']),
                 'zmiana_balansu': str(h['zmiana_balansu']),
                 'saldo_po_operacji': str(h['saldo_po_operacji'])
-                } for h in historia
-            ]
+            } for h in historia]
         }), 200
     
     except Exception as e:
+        print(f"Błąd podczas pobierania bilansu: {str(e)}")
         return jsonify({'error': str(e)}), 500
     finally:
         if cursor:
             cursor.close()
         if conn:
             conn.close()
+
+@app.route("/api/login", methods=['POST'])
+def login():
+    data = request.json
+    try:
+        user = Uzytkownik.get_by_name(data['nazwa'])
+        if not user:
+            return jsonify({'error': 'Nieprawidłowa nazwa użytkownika lub hasło'}), 401
+        
+        if not Uzytkownik.verify_password(data['haslo'], user.haslo):
+            return jsonify({'error': 'Nieprawidłowa nazwa użytkownika lub hasło'}), 401
             
+        if not user.status_weryfikacji:
+            return jsonify({'error': 'Konto nie zostało zweryfikowane. Sprawdź swoją skrzynkę email.'}), 401
+            
+        return jsonify({
+            'message': 'Zalogowano pomyślnie',
+            'user': {
+                'id': user.id_uzytkownika,
+                'nazwa': user.nazwa,
+                'email': user.email,
+                'balans': str(user.balans),
+                'rola': user.rola
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/zaklady/<int:id_uzytkownika>", methods=['GET'])
+def get_user_bets(id_uzytkownika):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("""
+            SELECT z.*, m.status as status_meczu,
+                   CONCAT(dg.nazwa, ' vs ', dgos.nazwa) as nazwa_meczu,
+                   km.nazwa_typu, km.kurs
+            FROM Zaklad z
+            JOIN Mecz m ON z.id_meczu = m.id_meczu
+            JOIN Druzyny dg ON m.id_gospodarzy = dg.id_druzyny
+            JOIN Druzyny dgos ON m.id_gosci = dgos.id_druzyny
+            JOIN Kursy_Meczu km ON z.kurs_meczu = km.id
+            WHERE z.id_uzytkownika = %s
+        """, (id_uzytkownika,))
+        
+        bets = cursor.fetchall()
+        return jsonify(bets)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
 if __name__ == "__main__":
     if test_db_connection():
         print("Połączenie z bazą danych zostało ustanowione pomyślnie.")
@@ -883,3 +706,4 @@ if __name__ == "__main__":
         print("Nie udało się połączyć z bazą danych.")
     
     app.run(debug=True)
+
