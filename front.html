@@ -478,7 +478,18 @@
         hideSpinner();
     }
 }   
-
+function getBetStatusClass(status) {
+    switch(status.toLowerCase()) {
+        case 'wygrany':
+            return 'bg-success';
+        case 'przegrany':
+            return 'bg-danger';
+        case 'oczekujący':
+            return 'bg-warning';
+        default:
+            return 'bg-secondary';
+    }
+}
         async function showBets() {
             if (!currentUser) {
                 showToast('Zaloguj się aby zobaczyć swoje zakłady', 'warning');

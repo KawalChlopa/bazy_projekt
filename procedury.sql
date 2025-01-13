@@ -133,7 +133,7 @@ CREATE PROCEDURE postaw_zaklad (
     IN p_id_uzytkownika INT,
     IN p_id_kursu INT,
     IN p_kwota_postawiona DECIMAL(10, 2),
-    IN p_id_zakladu INT,
+    OUT p_id_zakladu INT
 )
 
 BEGIN
@@ -142,51 +142,102 @@ BEGIN
     DECLARE v_kurs DECIMAL(10,2);
     DECLARE v_status_meczu VARCHAR(50);
     DECLARE v_potencjalna_wygrana DECIMAL(10,2);
+    DECLARE v_id_transakcji BIGINT;
+    
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
     
     START TRANSACTION;
     
-    -- Sprawdź balans użytkownika
+    -- Sprawdzenie użytkownika i balansu
     SELECT balans INTO v_balans
     FROM Uzytkownik 
     WHERE id_uzytkownika = p_id_uzytkownika
     FOR UPDATE;
+    
+    IF v_balans IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Użytkownik nie istnieje';
+    END IF;
     
     IF v_balans < p_kwota_postawiona THEN
         SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT = 'Niewystarczające środki na koncie';
     END IF;
     
-    -- Pobierz informacje o kursie i meczu
+    -- Sprawdzenie kursu
     SELECT km.id_meczu, km.kurs, m.status 
     INTO v_id_meczu, v_kurs, v_status_meczu
     FROM Kursy_Meczu km
     JOIN Mecz m ON km.id_meczu = m.id_meczu
-    WHERE km.id = p_id_kursu;
+    WHERE km.id = p_id_kursu AND km.status = TRUE;
     
-    IF v_status_meczu NOT IN ('oczekujący', 'nowy', 'zaplanowany') THEN
+    IF v_id_meczu IS NULL THEN
         SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'Mecz nie jest dostępny do obstawiania';
+        SET MESSAGE_TEXT = 'Nieprawidłowy kurs lub kurs nieaktywny';
     END IF;
     
-    -- Oblicz potencjalną wygraną
+    -- Obliczenie potencjalnej wygranej
     SET v_potencjalna_wygrana = p_kwota_postawiona * v_kurs;
     
-    -- Zapisz zakład
-    INSERT INTO Zaklad (id_meczu, id_uzytkownika, wynik, kwota_postawiona, 
-                       potencjalna_wygrana, status_zakladu, data_postawienia, kurs_meczu)
-    VALUES (v_id_meczu, p_id_uzytkownika, FALSE, p_kwota_postawiona, 
-            v_potencjalna_wygrana, 'Oczekujący', NOW(), p_id_kursu);
+    -- Zapisanie transakcji
+    INSERT INTO Transakcje (kwota, data, typ_operacji)
+    VALUES (-p_kwota_postawiona, NOW(), 'Postawienie zakładu');
+    
+    SET v_id_transakcji = LAST_INSERT_ID();
+    
+    -- Zapisanie w księgowości
+    INSERT INTO Ksiegowosc (id_uzytkownika, id_transakcji)
+    VALUES (p_id_uzytkownika, v_id_transakcji);
+    
+    -- Aktualizacja historii salda
+    INSERT INTO Historia_Salda (
+        id_uzytkownika, 
+        saldo_po_operacji, 
+        zmiana_balansu, 
+        id_transakcji
+    ) VALUES (
+        p_id_uzytkownika, 
+        v_balans - p_kwota_postawiona, 
+        -p_kwota_postawiona,
+        v_id_transakcji
+    );
+    
+    -- Zapisanie zakładu
+    INSERT INTO Zaklad (
+        id_meczu,
+        id_uzytkownika,
+        kurs_meczu,
+        wynik,
+        kwota_postawiona,
+        potencjalna_wygrana,
+        status_zakladu,
+        data_postawienia
+    ) VALUES (
+        v_id_meczu,
+        p_id_uzytkownika,
+        p_id_kursu,
+        FALSE,
+        p_kwota_postawiona,
+        v_potencjalna_wygrana,
+        'Oczekujący',
+        NOW()
+    );
     
     SET p_id_zakladu = LAST_INSERT_ID();
     
-    -- Aktualizuj balans użytkownika
+    -- Aktualizacja balansu użytkownika
     UPDATE Uzytkownik 
     SET balans = balans - p_kwota_postawiona
     WHERE id_uzytkownika = p_id_uzytkownika;
     
-    -- Dodaj transakcję
-    CALL dodaj_transakcje(p_id_uzytkownika, p_kwota_postawiona, 'Postawienie zakładu', 
-                           v_balans - p_kwota_postawiona);
+        IF p_id_zakladu IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Nie udało się utworzyć zakładu';
+    END IF;
     
     COMMIT;
 END//

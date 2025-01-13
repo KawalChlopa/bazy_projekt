@@ -347,7 +347,6 @@ def postawZaklad():
         if missing_fields:
             return jsonify({"error": f"Brak wymaganych pól w żądaniu: {', '.join(missing_fields)}"}), 400
 
-        #Sprawdzamy kwotę postawioną
         try:
             kwota = Decimal(str(data["kwota_postawiona"]))
             if kwota <= 0:
@@ -358,7 +357,6 @@ def postawZaklad():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        #Sprawdzamy czy kurs istnieje i czy jest aktywny
         cursor.execute("""
             SELECT km.*, m.status as status_meczu 
             FROM Kursy_Meczu km
@@ -373,51 +371,36 @@ def postawZaklad():
         if kurs['status_meczu'].lower() != 'oczekujący':
             return jsonify({"error": "Nie można postawić zakładu na ten mecz"}), 400
 
-        #Sprawdzenie czy użytkownik istnieje
         cursor.execute("SELECT balans FROM Uzytkownik WHERE id_uzytkownika = %s", 
                       (data["id_uzytkownika"],))
         user = cursor.fetchone()
         if not user:
             return jsonify({"error": "Użytkownik nie istnieje"}), 404
-
+        
         args = (data["id_uzytkownika"], data["id_kursu"], kwota, 0)
 
+        print('Rozpoczynanie procedury')
+        print(f'Argumenty procedury: {args}')
         result_args = cursor.callproc('postaw_zaklad', args)
-        conn.commit()
-
-        id_zakladu = result_args[3]
-
-        #Pobieranie informacji o zakładzie
-        cursor.execute("""
-            SELECT 
-                z.*,
-                m.status as status_meczu,
-                CONCAT(dg.nazwa, ' vs ', dgos.nazwa) as nazwa_meczu,
-                km.nazwa_typu,
-                km.kurs,
-                DATE_FORMAT(z.data_postawienia, '%%Y-%%m-%%d %%H:%%i:%%s') as data_postawienia_format
-            FROM Zaklad z
-            JOIN Mecz m ON z.id_meczu = m.id_meczu
-            JOIN Druzyny dg ON m.id_gospodarzy = dg.id_druzyny
-            JOIN Druzyny dgos ON m.id_gosci = dgos.id_druzyny
-            JOIN Kursy_Meczu km ON z.kurs_meczu = km.id
-            WHERE z.id_zakladu = %s
-        """, (id_zakladu,))
-
-        zaklad = cursor.fetchone()
+        print(f'Wynik procedury: {result_args}')
         
-        if not zaklad:
-            raise Exception("Nie udało się pobrać informacji o postawionym zakładzie")
+        try:
+            # Zmiana dostępu do wyniku procedury
+            id_zakladu = result_args['postaw_zaklad_arg4']
+            print(f'ID zakładu: {id_zakladu}')
+            
+            if id_zakladu is None or id_zakladu == 0:
+                raise ValueError("Nie udało się uzyskać ID zakładu")
+                
+            conn.commit()
+            
+            return jsonify({
+                "message": "Zakład został pomyślnie postawiony",
+                "id_zakladu": id_zakladu
+            }), 201
 
-        #Konwersja decimal na string dla JSON
-        zaklad['kwota_postawiona'] = str(zaklad['kwota_postawiona'])
-        zaklad['potencjalna_wygrana'] = str(zaklad['potencjalna_wygrana'])
-        zaklad['kurs'] = str(zaklad['kurs'])
-
-        return jsonify({
-            "message": "Zakład został pomyślnie postawiony",
-            "zaklad": zaklad
-        }), 201
+        except IndexError as e:
+            raise ValueError("Nieprawidłowy format wyniku procedury") from e
 
     except mysql.connector.Error as e:
         if conn:
@@ -427,8 +410,8 @@ def postawZaklad():
     except Exception as e:
         if conn:
             conn.rollback()
-        print(f"Błąd: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        print(f"Nieoczekiwany błąd: {str(e)}")
+        return jsonify({"error": f"Wystąpił nieoczekiwany błąd: {str(e)}"}), 500
     finally:
         if cursor:
             cursor.close()
@@ -706,4 +689,3 @@ if __name__ == "__main__":
         print("Nie udało się połączyć z bazą danych.")
     
     app.run(debug=True)
-
