@@ -420,3 +420,247 @@ select `Bukmacher`.`Uzytkownik`.`id_uzytkownika` AS `id_uzytkownika`,`Bukmacher`
 
 CREATE VIEW widok_uzytkownik_transakcje AS
 select `k`.`id_uzytkownika` AS `id_uzytkownika`,`t`.`typ_operacji` AS `typ_operacji`,sum(`t`.`kwota`) AS `suma_kwota`,count(`t`.`id`) AS `liczba_transakcji` from (`Bukmacher`.`Transakcje` `t` join `Bukmacher`.`Ksiegowosc` `k` on((`t`.`id` = `k`.`id_transakcji`))) group by `k`.`id_uzytkownika`,`t`.`typ_operacji`;
+
+-- Widok dla zdarzeń w meczu
+CREATE VIEW zdarzenia_meczu_szczegoly AS
+SELECT 
+    z.id,
+    z.id_meczu,
+    z.czas_zdarzenia,
+    z.typ_zdarzenia,
+    z.dodatkowe_informacje,
+    zaw.imie,
+    zaw.nazwisko,
+    d.nazwa as nazwa_druzyny
+FROM Zdarzenia_w_meczu z
+JOIN Zawodnicy zaw ON z.id_zawodnika = zaw.id_zawodnika
+JOIN Druzyny d ON zaw.id_druzyny = d.id_druzyny;
+
+-- Widok dla składu drużyny
+CREATE VIEW sklad_druzyny AS
+SELECT 
+    z.id_zawodnika,
+    z.imie,
+    z.nazwisko,
+    z.pozycja,
+    z.numer_koszulki,
+    d.id_druzyny,
+    d.nazwa as nazwa_druzyny,
+    CASE 
+        WHEN z.pozycja = 'Trener' THEN 1
+        ELSE 0
+    END as is_trener
+FROM Zawodnicy z
+JOIN Druzyny d ON z.id_druzyny = d.id_druzyny;
+
+-- Widok dla podstawowej jedenastki
+CREATE VIEW podstawowa_jedenastka AS
+SELECT 
+    z.id_zawodnika,
+    z.imie,
+    z.nazwisko,
+    z.pozycja,
+    z.numer_koszulki,
+    d.id_druzyny,
+    d.nazwa as nazwa_druzyny
+FROM Zawodnicy z
+JOIN Druzyny d ON z.id_druzyny = d.id_druzyny
+WHERE z.pozycja != 'Trener'
+ORDER BY 
+    CASE z.pozycja
+        WHEN 'Bramkarz' THEN 1
+        WHEN 'Obrońca' THEN 2
+        WHEN 'Pomocnik' THEN 3
+        WHEN 'Napastnik' THEN 4
+        ELSE 5
+    END,
+    z.numer_koszulki;
+
+    DELIMITER //
+
+CREATE PROCEDURE dodaj_zdarzenie_meczu(
+    IN p_id_zawodnika INT,
+    IN p_id_meczu INT,
+    IN p_czas_zdarzenia INT,
+    IN p_typ_zdarzenia VARCHAR(50),
+    IN p_dodatkowe_informacje VARCHAR(255)
+)
+BEGIN
+    INSERT INTO Zdarzenia_w_meczu (
+        id_zawodnika,
+        id_meczu,
+        czas_zdarzenia,
+        typ_zdarzenia,
+        dodatkowe_informacje
+    ) VALUES (
+        p_id_zawodnika,
+        p_id_meczu,
+        p_czas_zdarzenia,
+        p_typ_zdarzenia,
+        p_dodatkowe_informacje
+    );
+END//
+
+CREATE PROCEDURE pobierz_zdarzenia_meczu(
+    IN p_id_meczu INT
+)
+BEGIN
+    SELECT * FROM zdarzenia_meczu_szczegoly
+    WHERE id_meczu = p_id_meczu
+    ORDER BY czas_zdarzenia;
+END//
+
+CREATE PROCEDURE pobierz_sklad_druzyny(
+    IN p_id_druzyny INT
+)
+BEGIN
+    -- Pobierz trenera
+    SELECT * FROM sklad_druzyny
+    WHERE id_druzyny = p_id_druzyny AND is_trener = 1;
+    
+    -- Pobierz podstawową 11
+    SELECT * FROM podstawowa_jedenastka
+    WHERE id_druzyny = p_id_druzyny
+    LIMIT 11;
+END//
+
+-- Procedura do dodawania zawodnika
+CREATE PROCEDURE dodaj_zawodnika(
+    IN p_id_druzyny INT,
+    IN p_imie VARCHAR(50),
+    IN p_nazwisko VARCHAR(50),
+    IN p_pozycja VARCHAR(255),
+    IN p_data_urodzenia DATETIME,
+    IN p_numer_koszulki INT
+)
+BEGIN
+    INSERT INTO Zawodnicy (
+        id_druzyny,
+        imie,
+        nazwisko,
+        pozycja,
+        data_urodzenia,
+        numer_koszulki
+    ) VALUES (
+        p_id_druzyny,
+        p_imie,
+        p_nazwisko,
+        p_pozycja,
+        p_data_urodzenia,
+        p_numer_koszulki
+    );
+END//
+
+CREATE PROCEDURE aktualizuj_status_meczu()
+BEGIN
+    DECLARE v_id_meczu BIGINT;
+    DECLARE done INT DEFAULT FALSE;
+    
+    -- Kursor do znalezienia meczów do aktualizacji
+    DECLARE cur_mecze CURSOR FOR
+        SELECT id_meczu 
+        FROM Mecz 
+        WHERE status = 'Oczekujący' 
+        AND data_meczu <= NOW();
+        
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+    
+    -- Włączamy tryb transakcyjny
+    START TRANSACTION;
+    
+    OPEN cur_mecze;
+    
+    read_loop: LOOP
+        FETCH cur_mecze INTO v_id_meczu;
+        
+        IF done THEN
+            LEAVE read_loop;
+        END IF;
+        
+        -- Dezaktywuj wszystkie kursy dla meczu
+        UPDATE Kursy_Meczu 
+        SET status = FALSE 
+        WHERE id_meczu = v_id_meczu 
+        AND status = TRUE;
+        
+        -- Rozlicz zakłady dla meczu
+        CALL rozlicz_mecz(v_id_meczu);
+        
+    END LOOP;
+    
+    CLOSE cur_mecze;
+    
+    COMMIT;
+END //
+
+DROP EVENT IF EXISTS sprawdz_status_meczu//
+
+CREATE EVENT sprawdz_status_meczu
+ON SCHEDULE EVERY 1 MINUTE
+ON COMPLETION PRESERVE
+ENABLE
+DO
+BEGIN
+    CALL aktualizuj_status_meczu();
+END //
+CREATE PROCEDURE dezaktualizuj_kursy_meczu(
+    IN p_id_meczu INT,
+    IN p_id_kursu INT
+)
+BEGIN
+    DECLARE v_status_meczu VARCHAR(50);
+    DECLARE v_ilosc_zakladow INT;
+    DECLARE v_czy_aktywny BOOLEAN;
+    
+    -- Sprawdzenie statusu meczu
+    SELECT status INTO v_status_meczu 
+    FROM Mecz 
+    WHERE id_meczu = p_id_meczu;
+    
+    -- Sprawdzenie czy kurs jest aktywny
+    SELECT status INTO v_czy_aktywny
+    FROM Kursy_Meczu
+    WHERE id = p_id_kursu AND id_meczu = p_id_meczu;
+    
+    -- Sprawdzenie ilości aktywnych zakładów na ten kurs
+    SELECT COUNT(*) INTO v_ilosc_zakladow
+    FROM Zaklad
+    WHERE kurs_meczu = p_id_kursu;
+    
+    -- Walidacja
+    IF v_status_meczu IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Mecz nie istnieje';
+    END IF;
+    
+    IF v_czy_aktywny IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Kurs nie istnieje dla tego meczu';
+    END IF;
+    
+    IF NOT v_czy_aktywny THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Kurs jest już nieaktywny';
+    END IF;
+    
+    IF v_status_meczu != 'Oczekujący' THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Nie można dezaktywować kursu - mecz już się rozpoczął lub zakończył';
+    END IF;
+    
+    IF v_ilosc_zakladow > 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Nie można dezaktywować kursu - istnieją aktywne zakłady';
+    END IF;
+    
+    -- Dezaktywacja kursu
+    UPDATE Kursy_Meczu
+    SET status = FALSE
+    WHERE id = p_id_kursu AND id_meczu = p_id_meczu;
+    
+    -- Potwierdzenie wykonania
+    SELECT 'Kurs został pomyślnie dezaktywowany' AS message;
+    
+END//
+
+DELIMITER ;
