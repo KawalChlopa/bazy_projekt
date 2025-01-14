@@ -2,7 +2,7 @@ DELIMITER //
 
 -- PROCEDURY
 CREATE PROCEDURE aktualizacja_statusu_weryfikacji (
-    IN p_email INT,
+    IN p_email VARCHAR(255)
 )
 BEGIN
     UPDATE Uzytkownik 
@@ -13,8 +13,8 @@ END//
 CREATE PROCEDURE dodaj_kurs (
     IN p_id_meczu INT,
     IN p_nazwa_typu VARCHAR(255),
-    IN p_kurs Decimal(10, 2),
-    OUT p_id_kursu INT,
+    IN p_kurs DECIMAL(10, 2),
+    OUT p_id_kursu INT
 )
 BEGIN
     -- Deklaracja zmiennych dla statusu meczu
@@ -68,7 +68,6 @@ BEGIN
         SET MESSAGE_TEXT = 'Nieprawidłowy typ kursu. Dozwolone typy: zwycięstwo gospodarzy, remis, zwycięstwo gości';
     END IF;
     
-    
     INSERT INTO Kursy_Meczu (
         id_meczu, 
         nazwa_typu, 
@@ -83,10 +82,9 @@ BEGIN
         NOW()
     );
     
-    
     SET p_id_kursu = LAST_INSERT_ID();
     
-  	-- szczegóły ooooo
+    -- szczegóły
     SELECT 
         k.id,
         k.nazwa_typu,
@@ -99,18 +97,23 @@ BEGIN
     JOIN Druzyny d1 ON m.id_gospodarzy = d1.id_druzyny
     JOIN Druzyny d2 ON m.id_gosci = d2.id_druzyny
     WHERE k.id = p_id_kursu;
-    
 END//
 
 CREATE PROCEDURE dodaj_transakcje (
     IN p_id_uzytkownika INT,
     IN p_kwota DECIMAL(10, 2),
     IN p_typ_operacji VARCHAR(50),
-    IN p_saldo_po_operacji DECIMAL(10, 2),
+    IN p_saldo_po_operacji DECIMAL(10, 2)
 )
 BEGIN
     DECLARE v_id_transakcji INT;
-    
+    -- Sprawdzenie parametrów wejściowych
+IF p_id_uzytkownika IS NULL OR p_kwota IS NULL OR p_typ_operacji IS NULL OR p_saldo_po_operacji IS NULL THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Wszystkie parametry są wymagane';
+    END IF;
+
+START TRANSACTION;
  
     IF p_kwota > 0 OR p_typ_operacji = 'Postawienie zakładu' THEN
         INSERT INTO Transakcje (kwota, typ_operacji, data)
@@ -127,6 +130,9 @@ BEGIN
                 p_saldo_po_operacji, 
                 v_id_transakcji);
     END IF;
+    
+    COMMIT;
+
 END//
 
 CREATE PROCEDURE postaw_zaklad (
@@ -135,7 +141,6 @@ CREATE PROCEDURE postaw_zaklad (
     IN p_kwota_postawiona DECIMAL(10, 2),
     OUT p_id_zakladu INT
 )
-
 BEGIN
     DECLARE v_balans DECIMAL(10,2);
     DECLARE v_id_meczu INT;
@@ -239,12 +244,13 @@ BEGIN
         SET MESSAGE_TEXT = 'Nie udało się utworzyć zakładu';
     END IF;
     
+ 
     COMMIT;
 END//
 
 CREATE PROCEDURE reset_hasla (
     IN p_nazwa VARCHAR(255),
-    IN p_new_password VARCHAR(255),
+    IN p_new_password VARCHAR(255)
 )
 BEGIN
     UPDATE Uzytkownik 
@@ -253,7 +259,7 @@ BEGIN
 END//
 
 CREATE PROCEDURE rozlicz_mecz (
-    IN p_id_meczu INT,
+    IN p_id_meczu INT
 )
 BEGIN
     DECLARE v_gole_gospodarzy INT;
@@ -343,9 +349,8 @@ CREATE PROCEDURE tworzenie_uzytkownika (
     IN p_email VARCHAR(255),
     IN p_balans DECIMAL(10, 2),
     IN p_rola VARCHAR(50),
-    IN p_status_weryfikacji BOOLEAN,
+    IN p_status_weryfikacji BOOLEAN
 )
-
 BEGIN
     INSERT INTO Uzytkownik (nazwa, haslo, email, balans, data_utworzenia, rola, status_weryfikacji)
     VALUES (p_nazwa, p_haslo, p_email, p_balans, NOW(), p_rola, p_status_weryfikacji);
@@ -353,17 +358,17 @@ BEGIN
 END//
 
 CREATE PROCEDURE usun_uzytkownika (
-    IN p_id_uzytkownika INT,
+    IN p_id_uzytkownika INT
 )
 BEGIN
     DELETE FROM Uzytkownik 
     WHERE id_uzytkownika = p_id_uzytkownika;
 END//
 
-CREATE PROCEDURE zaaktualizuj_kurs (
+CREATE PROCEDURE aktualizuj_kurs (
     IN p_mecz_id INT,
     IN p_kurs_id INT,
-    IN p_nowy_kurs DECIMAL(10, 2),
+    IN p_nowy_kurs DECIMAL(10, 2)
 )
 BEGIN
     UPDATE Kursy_Meczu 
@@ -379,7 +384,7 @@ BEGIN
 END//
 
 CREATE PROCEDURE znajdz_mecz (
-    IN p_search_query VARCHAR(255),
+    IN p_search_query VARCHAR(255)
 )
 BEGIN
     SELECT DISTINCT
@@ -393,10 +398,8 @@ BEGIN
     FROM Mecz m
     JOIN Druzyny dg ON m.id_gospodarzy = dg.id_druzyny
     JOIN Druzyny dgos ON m.id_gosci = dgos.id_druzyny
-    WHERE p_search_query = 'all' 
-    OR dg.nazwa LIKE CONCAT('%', p_search_query, '%')
-    OR dgos.nazwa LIKE CONCAT('%', p_search_query, '%')
-    AND m.status = 'Oczekujący';
+    WHERE p_search_query = 'all' OR dg.nazwa LIKE CONCAT('%', p_search_query, '%')
+    OR dgos.nazwa LIKE CONCAT('%', p_search_query, '%') AND LOWER(m.status) = 'oczekujący';
 END//
 
 DELIMITER ;
@@ -404,37 +407,63 @@ DELIMITER ;
 -- WIDOKI
 
 CREATE VIEW aktywne_kursy AS
-select `km`.`id` AS `id`,`km`.`id_meczu` AS `id_meczu`,`km`.`nazwa_typu` AS `nazwa_typu`,`km`.`kurs` AS `kurs`,`km`.`status` AS `status`,`km`.`data_utworzenia` AS `data_utworzenia` from `Bukmacher`.`Kursy_Meczu` `km` where (`km`.`status` = true);
+SELECT `km`.`id` AS `id`, `km`.`id_meczu` AS `id_meczu`, `km`.`nazwa_typu` AS `nazwa_typu`, `km`.`kurs` AS `kurs`, `km`.`status` AS `status`, `km`.`data_utworzenia` AS `data_utworzenia` 
+FROM `Bukmacher`.`Kursy_Meczu` `km` 
+WHERE (`km`.`status` = TRUE);
 
 CREATE VIEW statystyki_uzytkownika AS
-select `Bukmacher`.`Zaklad`.`id_uzytkownika` AS `id_uzytkownika`,count((case when (`Bukmacher`.`Zaklad`.`wynik` = true) then 1 end)) AS `wygrane_zaklady`,count((case when (`Bukmacher`.`Zaklad`.`wynik` = false) then 1 end)) AS `przegrane_zaklady`,sum((case when (`Bukmacher`.`Zaklad`.`wynik` = true) then `Bukmacher`.`Zaklad`.`potencjalna_wygrana` else 0 end)) AS `suma_wygranych`,sum((case when (`Bukmacher`.`Zaklad`.`wynik` = false) then `Bukmacher`.`Zaklad`.`kwota_postawiona` else 0 end)) AS `suma_przegranych`,sum(`Bukmacher`.`Zaklad`.`kwota_postawiona`) AS `suma_postawionych`,round(((count((case when (`Bukmacher`.`Zaklad`.`wynik` = true) then 1 end)) * 100.0) / nullif(count(0),0)),2) AS `procent_wygranych` from `Bukmacher`.`Zaklad` where (`Bukmacher`.`Zaklad`.`status_zakladu` in ('Wygrany','Przegrany')) group by `Bukmacher`.`Zaklad`.`id_uzytkownika`;
+SELECT `Bukmacher`.`Zaklad`.`id_uzytkownika` AS `id_uzytkownika`, 
+       COUNT(CASE WHEN (`Bukmacher`.`Zaklad`.`wynik` = TRUE) THEN 1 END) AS `wygrane_zaklady`, 
+       COUNT(CASE WHEN (`Bukmacher`.`Zaklad`.`wynik` = FALSE) THEN 1 END) AS `przegrane_zaklady`, 
+       SUM(CASE WHEN (`Bukmacher`.`Zaklad`.`wynik` = TRUE) THEN `Bukmacher`.`Zaklad`.`potencjalna_wygrana` ELSE 0 END) AS `suma_wygranych`, 
+       SUM(CASE WHEN (`Bukmacher`.`Zaklad`.`wynik` = FALSE) THEN `Bukmacher`.`Zaklad`.`kwota_postawiona` ELSE 0 END) AS `suma_przegranych`, 
+       SUM(`Bukmacher`.`Zaklad`.`kwota_postawiona`) AS `suma_postawionych`, 
+       ROUND(((COUNT(CASE WHEN (`Bukmacher`.`Zaklad`.`wynik` = TRUE) THEN 1 END) * 100.0) / NULLIF(COUNT(0),0)),2) AS `procent_wygranych` 
+FROM `Bukmacher`.`Zaklad` 
+WHERE (`Bukmacher`.`Zaklad`.`status_zakladu` IN ('Wygrany','Przegrany')) 
+GROUP BY `Bukmacher`.`Zaklad`.`id_uzytkownika`;
 
 CREATE VIEW szczegoly_meczu AS
-select `m`.`id_meczu` AS `id_meczu`,`dg`.`nazwa` AS `gospodarz`,`dgos`.`nazwa` AS `gosc`,`m`.`data_meczu` AS `data_meczu`,`m`.`gole_gospodarzy` AS `gole_gospodarzy`,`m`.`gole_gosci` AS `gole_gosci`,`m`.`status` AS `status` from ((`Bukmacher`.`Mecz` `m` join `Bukmacher`.`Druzyny` `dg` on((`m`.`id_gospodarzy` = `dg`.`id_druzyny`))) join `Bukmacher`.`Druzyny` `dgos` on((`m`.`id_gosci` = `dgos`.`id_druzyny`)));
+SELECT `m`.`id_meczu` AS `id_meczu`, 
+       `dg`.`nazwa` AS `gospodarz`, 
+       `dgos`.`nazwa` AS `gosc`, 
+       `m`.`data_meczu` AS `data_meczu`, 
+       `m`.`gole_gospodarzy` AS `gole_gospodarzy`, 
+       `m`.`gole_gosci` AS `gole_gosci`, 
+       `m`.`status` AS `status` 
+FROM ((`Bukmacher`.`Mecz` `m` 
+JOIN `Bukmacher`.`Druzyny` `dg` ON((`m`.`id_gospodarzy` = `dg`.`id_druzyny`))) 
+JOIN `Bukmacher`.`Druzyny` `dgos` ON((`m`.`id_gosci` = `dgos`.`id_druzyny`)));
 
 CREATE VIEW uzytkownik_historia_balansu AS
-select `hs`.`id_uzytkownika` AS `id_uzytkownika`,`hs`.`zmiana_balansu` AS `zmiana_balansu`,`hs`.`saldo_po_operacji` AS `saldo_po_operacji`,`t`.`typ_operacji` AS `typ_operacji`,`t`.`data` AS `data`,`t`.`kwota` AS `kwota` from (`Bukmacher`.`Historia_Salda` `hs` join `Bukmacher`.`Transakcje` `t` on((`hs`.`id_transakcji` = `t`.`id`)));
+SELECT `hs`.`id_uzytkownika` AS `id_uzytkownika`, 
+       `hs`.`zmiana_balansu` AS `zmiana_balansu`, 
+       `hs`.`saldo_po_operacji` AS `saldo_po_operacji`, 
+       `t`.`typ_operacji` AS `typ_operacji`, 
+       `t`.`data` AS `data`, 
+       `t`.`kwota` AS `kwota` 
+FROM (`Bukmacher`.`Historia_Salda` `hs` 
+JOIN `Bukmacher`.`Transakcje` `t` ON((`hs`.`id_transakcji` = `t`.`id`)));
 
 CREATE VIEW uzytkownik_szczegoly AS
-select `Bukmacher`.`Uzytkownik`.`id_uzytkownika` AS `id_uzytkownika`,`Bukmacher`.`Uzytkownik`.`nazwa` AS `nazwa`,`Bukmacher`.`Uzytkownik`.`haslo` AS `haslo`,`Bukmacher`.`Uzytkownik`.`email` AS `email`,`Bukmacher`.`Uzytkownik`.`balans` AS `balans`,`Bukmacher`.`Uzytkownik`.`data_utworzenia` AS `data_utworzenia`,`Bukmacher`.`Uzytkownik`.`rola` AS `rola`,`Bukmacher`.`Uzytkownik`.`status_weryfikacji` AS `status_weryfikacji` from `Bukmacher`.`Uzytkownik`;
+SELECT `Bukmacher`.`Uzytkownik`.`id_uzytkownika` AS `id_uzytkownika`, 
+       `Bukmacher`.`Uzytkownik`.`nazwa` AS `nazwa`, 
+       `Bukmacher`.`Uzytkownik`.`haslo` AS `haslo`, 
+       `Bukmacher`.`Uzytkownik`.`email` AS `email`, 
+       `Bukmacher`.`Uzytkownik`.`balans` AS `balans`, 
+       `Bukmacher`.`Uzytkownik`.`data_utworzenia` AS `data_utworzenia`, 
+       `Bukmacher`.`Uzytkownik`.`rola` AS `rola`, 
+       `Bukmacher`.`Uzytkownik`.`status_weryfikacji` AS `status_weryfikacji` 
+FROM `Bukmacher`.`Uzytkownik`;
 
 CREATE VIEW widok_uzytkownik_transakcje AS
-select `k`.`id_uzytkownika` AS `id_uzytkownika`,`t`.`typ_operacji` AS `typ_operacji`,sum(`t`.`kwota`) AS `suma_kwota`,count(`t`.`id`) AS `liczba_transakcji` from (`Bukmacher`.`Transakcje` `t` join `Bukmacher`.`Ksiegowosc` `k` on((`t`.`id` = `k`.`id_transakcji`))) group by `k`.`id_uzytkownika`,`t`.`typ_operacji`;
-
--- Widok dla zdarzeń w meczu
-CREATE VIEW zdarzenia_meczu_szczegoly AS
-SELECT 
-    z.id,
-    z.id_meczu,
-    z.czas_zdarzenia,
-    z.typ_zdarzenia,
-    z.dodatkowe_informacje,
-    zaw.imie,
-    zaw.nazwisko,
-    d.nazwa as nazwa_druzyny
-FROM Zdarzenia_w_meczu z
-JOIN Zawodnicy zaw ON z.id_zawodnika = zaw.id_zawodnika
-JOIN Druzyny d ON zaw.id_druzyny = d.id_druzyny;
+SELECT `k`.`id_uzytkownika` AS `id_uzytkownika`, 
+       `t`.`typ_operacji` AS `typ_operacji`, 
+       SUM(`t`.`kwota`) AS `suma_kwota`, 
+       COUNT(`t`.`id`) AS `liczba_transakcji` 
+FROM (`Bukmacher`.`Transakcje` `t` 
+JOIN `Bukmacher`.`Ksiegowosc` `k` ON((`t`.`id` = `k`.`id_transakcji`))) 
+GROUP BY `k`.`id_uzytkownika`, `t`.`typ_operacji`;
 
 -- Widok dla składu drużyny
 CREATE VIEW sklad_druzyny AS
@@ -476,7 +505,7 @@ ORDER BY
     END,
     z.numer_koszulki;
 
-    DELIMITER //
+DELIMITER //
 
 CREATE PROCEDURE dodaj_zdarzenie_meczu(
     IN p_id_zawodnika INT,
@@ -514,14 +543,30 @@ CREATE PROCEDURE pobierz_sklad_druzyny(
     IN p_id_druzyny INT
 )
 BEGIN
-    -- Pobierz trenera
-    SELECT * FROM sklad_druzyny
-    WHERE id_druzyny = p_id_druzyny AND is_trener = 1;
+    -- Pobierz trenera (zakładając, że trener ma pozycję 'Trener' w tabeli Zawodnicy)
+    SELECT 
+        z.id_zawodnika,
+        z.imie,
+        z.nazwisko,
+        z.pozycja,
+        z.data_urodzenia
+    FROM Zawodnicy z
+    WHERE z.id_druzyny = p_id_druzyny 
+    AND z.pozycja = 'Trener'
+    LIMIT 1;
     
-    -- Pobierz podstawową 11
-    SELECT * FROM podstawowa_jedenastka
-    WHERE id_druzyny = p_id_druzyny
-    LIMIT 11;
+    -- Pobierz zawodników (wszystkich oprócz trenera)
+    SELECT 
+        z.id_zawodnika,
+        z.imie,
+        z.nazwisko,
+        z.pozycja,
+        z.numer_koszulki as numer,
+        z.data_urodzenia
+    FROM Zawodnicy z
+    WHERE z.id_druzyny = p_id_druzyny 
+    AND z.pozycja != 'Trener'
+    ORDER BY z.numer_koszulki ASC;
 END//
 
 -- Procedura do dodawania zawodnika
@@ -551,12 +596,11 @@ BEGIN
     );
 END//
 
-CREATE PROCEDURE aktualizuj_status_meczu()
 BEGIN
     DECLARE v_id_meczu BIGINT;
     DECLARE done INT DEFAULT FALSE;
     
-    -- Kursor do znalezienia meczów do aktualizacji
+
     DECLARE cur_mecze CURSOR FOR
         SELECT id_meczu 
         FROM Mecz 
@@ -565,7 +609,7 @@ BEGIN
         
     DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
     
-    -- Włączamy tryb transakcyjny
+
     START TRANSACTION;
     
     OPEN cur_mecze;
@@ -577,13 +621,13 @@ BEGIN
             LEAVE read_loop;
         END IF;
         
-        -- Dezaktywuj wszystkie kursy dla meczu
+       
         UPDATE Kursy_Meczu 
         SET status = FALSE 
         WHERE id_meczu = v_id_meczu 
         AND status = TRUE;
         
-        -- Rozlicz zakłady dla meczu
+    
         CALL rozlicz_mecz(v_id_meczu);
         
     END LOOP;
@@ -603,7 +647,8 @@ DO
 BEGIN
     CALL aktualizuj_status_meczu();
 END //
-CREATE PROCEDURE dezaktualizuj_kursy_meczu(
+
+CREATE PROCEDURE dezaktualizuj_kurs(
     IN p_id_meczu INT,
     IN p_id_kursu INT
 )
