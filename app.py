@@ -168,7 +168,7 @@ def create_account():
             nazwa=dane['nazwa'],
             haslo=dane['haslo'],
             email=dane['email'],
-            balans=dane.get('balans', 0.0),
+            balans=dane.get('balans', 100.0),
             rola=dane.get('rola', 'Uzytkownik'),
             status_weryfikacji=dane.get('status_weryfikacji', False)
         )
@@ -186,14 +186,15 @@ def verify_account(token):
         if not email:
             return jsonify({'error': 'Link weryfikacyjny jest nieprawidłowy lub wygasł'}), 400
         
-        user = Uzytkownik.get_by_name(email)
-
-        if not user:
-            return jsonify({'error': 'Użytkownik nie istnieje'}), 404
-
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.callproc('aktualizacja_statusu_weryfikacji', (user.id_uzytkownika,))
+        
+        # Zaktualizuj zapytanie, aby szukało po emailu
+        cursor.execute("UPDATE Uzytkownik SET status_weryfikacji = TRUE WHERE email = %s", (email,))
+        
+        if cursor.rowcount == 0:
+            return jsonify({'error': 'Nie znaleziono użytkownika'}), 404
+            
         conn.commit()
         cursor.close()
         conn.close()
@@ -475,11 +476,26 @@ def update_match_odd(mecz_id, kurs_id):
             
         kurs = Decimal(str(dane['kurs']))
         
+        # Dodatkowa walidacja
+        if kurs <= 1:
+            return jsonify({'error': 'Kurs musi być większy niż 1'}), 400
+        
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.callproc('aktualizuj_kurs', 
-                       [mecz_id, kurs_id, Decimal(str(dane['kurs']))])
+        cursor.execute("""
+            SELECT status FROM Kursy_Meczu 
+            WHERE id = %s AND id_meczu = %s
+        """, (kurs_id, mecz_id))
+        
+        result = cursor.fetchone()
+        if not result:
+            return jsonify({'error': 'Kurs nie istnieje'}), 404
+        if not result[0]:
+            return jsonify({'error': 'Kurs jest nieaktywny'}), 400
+            
+        cursor.callproc('aktualizuj_kurs', [mecz_id, kurs_id, kurs])
+        conn.commit()
             
         return jsonify({'message': 'Kurs został zaktualizowany'}), 200
         
@@ -591,7 +607,8 @@ def login():
                 'nazwa': user.nazwa,
                 'email': user.email,
                 'balans': str(user.balans),
-                'rola': user.rola
+                'rola': user.rola,
+                'data_utworzenia': user.data_utworzenia.strftime('%Y-%m-%d %H:%M:%S') if user.data_utworzenia else None
             }
         }), 200
         

@@ -7,7 +7,16 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        /* Dodaj tutaj swoje style */
+        .loading-spinner {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 9999;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+        }
     </style>
 </head>
 <body>
@@ -44,8 +53,14 @@
                     </li>
                 </ul>
                 <ul class="navbar-nav ml-auto">
-                    <li class="nav-item">
+                    <li class="nav-item" id="logoutNavItem" style="display: none;">
                         <a class="nav-link" href="#" onclick="logout()">Wyloguj</a>
+                    </li>
+                    <li class="nav-item" id="loginNavItem">
+                        <a class="nav-link" href="#" onclick="showLoginForm()">Zaloguj</a>
+                    </li>
+                    <li class="nav-item" id="registerNavItem">
+                        <a class="nav-link" href="#" onclick="showRegistrationForm()">Zarejestruj</a>
                     </li>
                 </ul>
             </div>
@@ -61,34 +76,288 @@
         const API_URL = 'http://localhost:5000/api';
         let currentUser = null;
 
-        function showToast(message, type) {
-            const toastContainer = document.getElementById('toastContainer');
-            const toast = document.createElement('div');
-            toast.className = `toast align-items-center text-bg-${type} border-0`;
-            toast.role = 'alert';
-            toast.ariaLive = 'assertive';
-            toast.ariaAtomic = 'true';
-            toast.innerHTML = `
-                <div class="d-flex">
-                    <div class="toast-body">
-                        ${message}
+        // Funkcja aktualizacji nawigacji
+        function updateNavigation() {
+            document.getElementById('adminNavItem').style.display = currentUser?.rola === 'Admin' ? 'block' : 'none';
+            document.getElementById('logoutNavItem').style.display = currentUser ? 'block' : 'none';
+            document.getElementById('loginNavItem').style.display = currentUser ? 'none' : 'block';
+            document.getElementById('registerNavItem').style.display = currentUser ? 'none' : 'block';
+        }
+
+        // Wyświetlanie formularza rejestracji
+        function showRegistrationForm() {
+            document.getElementById('mainContent').innerHTML = `
+                <div class="row justify-content-center">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="mb-0">Rejestracja</h3>
+                            </div>
+                            <div class="card-body">
+                                <form id="registrationForm">
+                                    <div class="mb-3">
+                                        <label for="regNazwa" class="form-label">Nazwa użytkownika</label>
+                                        <input type="text" class="form-control" id="regNazwa" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="regEmail" class="form-label">Email</label>
+                                        <input type="email" class="form-control" id="regEmail" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="regHaslo" class="form-label">Hasło</label>
+                                        <input type="password" class="form-control" id="regHaslo" 
+                                               required minlength="6">
+                                        <div class="form-text">Hasło musi mieć minimum 6 znaków</div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="regHasloPotwierdzenie" class="form-label">
+                                            Potwierdź hasło
+                                        </label>
+                                        <input type="password" class="form-control" 
+                                               id="regHasloPotwierdzenie" required minlength="6">
+                                    </div>
+                                    <div class="d-grid gap-2">
+                                        <button type="submit" class="btn btn-primary">
+                                            Zarejestruj się
+                                        </button>
+                                        <button type="button" class="btn btn-secondary" 
+                                                onclick="showLoginForm()">
+                                            Mam już konto
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
                     </div>
-                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
                 </div>
             `;
-            toastContainer.appendChild(toast);
-            const bsToast = new bootstrap.Toast(toast);
-            bsToast.show();
+
+            document.getElementById('registrationForm').addEventListener('submit', handleRegistration);
         }
 
-        function showSpinner() {
-            document.getElementById('loadingSpinner').style.display = 'block';
+        // Obsługa rejestracji
+        async function handleRegistration(event) {
+            event.preventDefault();
+            
+            const nazwa = document.getElementById('regNazwa').value;
+            const email = document.getElementById('regEmail').value;
+            const haslo = document.getElementById('regHaslo').value;
+            const hasloPotwierdzenie = document.getElementById('regHasloPotwierdzenie').value;
+
+            if (haslo !== hasloPotwierdzenie) {
+                showToast('Hasła nie są identyczne', 'danger');
+                return;
+            }
+
+            showSpinner();
+            try {
+                const response = await fetch(`${API_URL}/konto`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        nazwa,
+                        email,
+                        haslo
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showToast(data.message, 'success');
+                    showLoginForm();
+                } else {
+                    showToast(data.error || 'Wystąpił błąd podczas rejestracji', 'danger');
+                }
+            } catch (error) {
+                showToast('Wystąpił błąd podczas łączenia z serwerem', 'danger');
+            } finally {
+                hideSpinner();
+            }
         }
 
-        function hideSpinner() {
-            document.getElementById('loadingSpinner').style.display = 'none';
+        // Wyświetlanie formularza logowania
+        function showLoginForm() {
+            document.getElementById('mainContent').innerHTML = `
+                <div class="row justify-content-center">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="mb-0">Logowanie</h3>
+                            </div>
+                            <div class="card-body">
+                                <form id="loginForm">
+                                    <div class="mb-3">
+                                        <label for="loginNazwa" class="form-label">
+                                            Nazwa użytkownika
+                                        </label>
+                                        <input type="text" class="form-control" id="loginNazwa" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="loginHaslo" class="form-label">Hasło</label>
+                                        <input type="password" class="form-control" id="loginHaslo" required>
+                                    </div>
+                                    <div class="d-grid gap-2">
+                                        <button type="submit" class="btn btn-primary">Zaloguj</button>
+                                        <button type="button" class="btn btn-secondary" 
+                                                onclick="showRegistrationForm()">
+                                            Utwórz nowe konto
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('loginForm').addEventListener('submit', handleLogin);
         }
 
+        // Obsługa logowania
+        async function handleLogin(event) {
+            event.preventDefault();
+            
+            const nazwa = document.getElementById('loginNazwa').value;
+            const haslo = document.getElementById('loginHaslo').value;
+
+            showSpinner();
+            try {
+                const response = await fetch(`${API_URL}/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ nazwa, haslo })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    currentUser = data.user;
+                    updateNavigation();
+                    showToast('Zalogowano pomyślnie', 'success');
+                    showProfile();
+                } else {
+                    showToast(data.error || 'Błąd logowania', 'danger');
+                }
+            } catch (error) {
+                showToast('Wystąpił błąd podczas łączenia z serwerem', 'danger');
+            } finally {
+                hideSpinner();
+            }
+        }
+
+        // Obsługa wylogowania
+        function logout() {
+            currentUser = null;
+            updateNavigation();
+            showToast('Wylogowano pomyślnie', 'success');
+            showLoginForm();
+        }
+
+        // Potwierdzenie usunięcia konta
+        function confirmDeleteAccount() {
+            const modal = document.createElement('div');
+            modal.className = 'modal fade';
+            modal.setAttribute('id', 'deleteAccountModal');
+            modal.innerHTML = `
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Potwierdź usunięcie konta</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p>Czy na pewno chcesz usunąć swoje konto? Ta operacja jest nieodwracalna!</p>
+                            <p class="text-danger">
+                                <strong>Uwaga:</strong> Wszystkie twoje dane zostaną usunięte.
+                            </p>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                                Anuluj
+                            </button>
+                            <button type="button" class="btn btn-danger" onclick="deleteAccount()">
+                                Usuń konto
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            const modalInstance = new bootstrap.Modal(modal);
+            modalInstance.show();
+            
+            modal.addEventListener('hidden.bs.modal', () => {
+                modal.remove();
+            });
+        }
+
+        // Usuwanie konta
+        async function deleteAccount() {
+            if (!currentUser) {
+                showToast('Musisz być zalogowany aby usunąć konto', 'warning');
+                return;
+            }
+
+            showSpinner();
+            try {
+                const response = await fetch(`${API_URL}/konto/${currentUser.id}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    const modal = bootstrap.Modal.getInstance(
+                        document.getElementById('deleteAccountModal')
+                    );
+                    modal.hide();
+                    showToast('Konto zostało pomyślnie usunięte', 'success');
+                    logout();
+                } else {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Wystąpił błąd podczas usuwania konta');
+                }
+            } catch (error) {
+                showToast(error.message, 'danger');
+            } finally {
+                hideSpinner();
+            }
+        }
+
+        // Weryfikacja emaila
+        async function handleEmailVerification() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            
+            if (token) {
+                showSpinner();
+                try {
+                    const response = await fetch(`${API_URL}/konto/verify/${token}`);
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        showToast('Email został pomyślnie zweryfikowany', 'success');
+                    } else {
+                        showToast(
+                            data.error || 'Wystąpił błąd podczas weryfikacji emaila', 
+                            'danger'
+                        );
+                    }
+                } catch (error) {
+                    showToast('Wystąpił błąd podczas łączenia z serwerem', 'danger');
+                } finally {
+                    hideSpinner();
+                    // Usuń token z URL
+                    window.history.replaceState({}, '', window.location.pathname);
+                }
+            }
+        }
+
+        // Pokazywanie profilu użytkownika
         async function showProfile() {
             if (!currentUser) {
                 showToast('Zaloguj się aby zobaczyć swój profil', 'warning');
@@ -102,37 +371,88 @@
                 const data = await response.json();
 
                 document.getElementById('mainContent').innerHTML = `
-                    <h2>Profil</h2>
-                    <p><strong>Nazwa użytkownika:</strong> ${currentUser.nazwa}</p>
-                    <p><strong>Email:</strong> ${currentUser.email}</p>
-                    <p><strong>Aktualny balans:</strong> ${data.statystyki.balans} PLN</p>
-                    <h3>Statystyki zakładów</h3>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <p><i class="fas fa-trophy text-success me-2"></i>
-                               Wygrane: ${data.statystyki.wygrane_zaklady}</p>
-                            <p><i class="fas fa-times text-danger me-2"></i>
-                               Przegrane: ${data.statystyki.przegrane_zaklady}</p>
-                        </div>
-                        <div class="col-md-6">
-                            <p><i class="fas fa-plus-circle text-success me-2"></i>
-                               Suma wygranych: ${data.statystyki.suma_wygranych} PLN</p>
-                            <p><i class="fas fa-minus-circle text-danger me-2"></i>
-                               Suma przegranych: ${data.statystyki.suma_przegranych} PLN</p>
+                    <div class="container">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="card mb-4">
+                                    <div class="card-header">
+                                        <h3 class="mb-0">Profil użytkownika</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row mb-4">
+                                            <div class="col-md-6">
+                                                <p><strong>Nazwa użytkownika:</strong> ${currentUser.nazwa}</p>
+                                                <p><strong>Email:</strong> ${currentUser.email}</p>
+                                                <p><strong>Aktualny balans:</strong> ${data.statystyki.balans} PLN</p>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <p><strong>Status:</strong> ${currentUser.rola}</p>
+                                                <p><strong>Data dołączenia:</strong> ${new Date(currentUser.data_utworzenia).toLocaleDateString()}</p>
+                                            </div>
+                                        </div>
+
+                                        <h4>Statystyki zakładów</h4>
+                                        <div class="row mb-4">
+                                            <div class="col-md-6">
+                                                <div class="card bg-light">
+                                                    <div class="card-body">
+                                                        <h5 class="card-title">Wygrane/Przegrane</h5>
+                                                        <p><i class="fas fa-trophy text-success me-2"></i>Wygrane: ${data.statystyki.wygrane_zaklady}</p>
+                                                        <p><i class="fas fa-times text-danger me-2"></i>Przegrane: ${data.statystyki.przegrane_zaklady}</p>
+                                                        <p><i class="fas fa-percentage text-info me-2"></i>Skuteczność: ${data.statystyki.procent_wygranych}%</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="card bg-light">
+                                                    <div class="card-body">
+                                                        <h5 class="card-title">Finanse</h5>
+                                                        <p><i class="fas fa-plus-circle text-success me-2"></i>Suma wygranych: ${data.statystyki.suma_wygranych} PLN</p>
+                                                        <p><i class="fas fa-minus-circle text-danger me-2"></i>Suma przegranych: ${data.statystyki.suma_przegranych} PLN</p>
+                                                        <p><i class="fas fa-coins text-warning me-2"></i>Suma zakładów: ${data.statystyki.suma_postawionych} PLN</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <h4>Historia operacji</h4>
+                                        <div class="table-responsive">
+                                            <table class="table table-hover">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Data</th>
+                                                        <th>Typ operacji</th>
+                                                        <th>Kwota</th>
+                                                        <th>Zmiana balansu</th>
+                                                        <th>Saldo po operacji</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    ${data.ostatnie_operacje.map(op => `
+                                                        <tr>
+                                                            <td>${new Date(op.data).toLocaleString()}</td>
+                                                            <td>${op.typ_operacji}</td>
+                                                            <td>${op.kwota} PLN</td>
+                                                            <td class="${op.zmiana_balansu >= 0 ? 'text-success' : 'text-danger'}">
+                                                                ${op.zmiana_balansu >= 0 ? '+' : ''}${op.zmiana_balansu} PLN
+                                                            </td>
+                                                            <td>${op.saldo_po_operacji} PLN</td>
+                                                        </tr>
+                                                    `).join('')}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        <div class="mt-4">
+                                            <button class="btn btn-danger" onclick="confirmDeleteAccount()">
+                                                <i class="fas fa-trash-alt me-2"></i>Usuń konto
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <h3>Ostatnie operacje</h3>
-                    <ul class="list-group">
-                        ${data.ostatnie_operacje.map(op => `
-                            <li class="list-group-item">
-                                <strong>Data:</strong> ${op.data}<br>
-                                <strong>Typ operacji:</strong> ${op.typ_operacji}<br>
-                                <strong>Kwota:</strong> ${op.kwota} PLN<br>
-                                <strong>Zmiana balansu:</strong> ${op.zmiana_balansu} PLN<br>
-                                <strong>Saldo po operacji:</strong> ${op.saldo_po_operacji} PLN
-                            </li>
-                        `).join('')}
-                    </ul>
                 `;
             } catch (error) {
                 showToast(error.message, 'danger');
@@ -140,183 +460,134 @@
                 hideSpinner();
             }
         }
+        // Pokazywanie zakładów użytkownika
+async function showBets() {
+    if (!currentUser) {
+        showToast('Zaloguj się aby zobaczyć swoje zakłady', 'warning');
+        showLoginForm();
+        return;
+    }
 
-        async function showBets() {
-            if (!currentUser) {
-                showToast('Zaloguj się aby zobaczyć swoje zakłady', 'warning');
-                showLoginForm();
-                return;
-            }
-
-            showSpinner();
-            try {
-                const response = await fetch(`${API_URL}/zaklady/${currentUser.id}`);
-                const bets = await response.json();
-
-                document.getElementById('mainContent').innerHTML = `
-                    <h2>Twoje zakłady</h2>
-                    <ul class="list-group">
-                        ${bets.map(bet => `
-                            <li class="list-group-item">
-                                <strong>Mecz:</strong> ${bet.nazwa_meczu}<br>
-                                <strong>Typ:</strong> ${bet.nazwa_typu}<br>
-                                <strong>Kurs:</strong> ${bet.kurs}<br>
-                                <strong>Kwota postawiona:</strong> ${bet.kwota_postawiona} PLN<br>
-                                <strong>Potencjalna wygrana:</strong> ${bet.potencjalna_wygrana} PLN<br>
-                                <strong>Status meczu:</strong> ${bet.status_meczu}
-                            </li>
-                        `).join('')}
-                    </ul>
-                `;
-            } catch (error) {
-                showToast(error.message, 'danger');
-            } finally {
-                hideSpinner();
-            }
-        }
-
-        async function showMatches() {
     showSpinner();
     try {
-        const response = await fetch(`${API_URL}/mecze`);
-        if (!response.ok) {
-            throw new Error('Błąd podczas pobierania meczów');
-        }
-        const matches = await response.json();
-
-        const isAdmin = currentUser && currentUser.rola === 'Admin';
-
-        document.getElementById('mainContent').innerHTML = `
-            <h2>Mecze</h2>
-            <input type="text" id="searchInput" class="form-control mb-3" placeholder="Wyszukaj mecz...">
-            <ul class="list-group" id="matchesList">
-                ${matches.map(match => `
-                    <li class="list-group-item">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h5 class="mb-1">${match.gospodarz} vs ${match.gosc}</h5>
-                                <p class="mb-1">Data: ${match.data_meczu}</p>
-                                <p class="mb-1">Status: ${match.status}</p>
-                            </div>
-                            <div class="btn-group-vertical">
-                                <button class="btn btn-primary mb-1" onclick="showTeam(${match.id_gospodarzy})">
-                                    Skład gospodarzy
-                                </button>
-                                <button class="btn btn-secondary mb-1" onclick="showTeam(${match.id_gosci})">
-                                    Skład gości
-                                </button>
-                                <button class="btn btn-success mb-1" onclick="showBetForm(${match.id_meczu})">
-                                    Postaw zakład
-                                </button>
-                                ${isAdmin ? `
-                                    <button class="btn btn-warning" onclick="showMatchOddsManagement(${match.id_meczu})">
-                                        Zarządzaj kursami
-                                    </button>
-                                ` : ''}
-                            </div>
-                        </div>
-                    </li>
-                `).join('')}
-            </ul>
-        `;
-
-                document.getElementById('searchInput').addEventListener('input', function() {
-                    const searchTerm = this.value.toLowerCase();
-                    const filteredMatches = matches.filter(match => 
-                        match.gospodarz.toLowerCase().includes(searchTerm) || 
-                        match.gosc.toLowerCase().includes(searchTerm)
-                    );
-                    document.getElementById('matchesList').innerHTML = filteredMatches.map(match => `
-                        <li class="list-group-item">
-                            <strong>Mecz:</strong> ${match.gospodarz} vs ${match.gosc}<br>
-                            <strong>Data:</strong> ${match.data_meczu}<br>
-                            <strong>Status:</strong> ${match.status}<br>
-                            <button class="btn btn-primary mt-2" onclick="showTeam(${match.id_gospodarzy})">Skład gospodarzy</button>
-                            <button class="btn btn-secondary mt-2" onclick="showTeam(${match.id_gosci})">Skład gości</button>
-                            <button class="btn btn-success mt-2" onclick="showBetForm(${match.id_meczu})">Postaw zakład</button>
-                        </li>
-                    `).join('');
-                });
-            } catch (error) {
-                showToast(error.message, 'danger');
-            } finally {
-                hideSpinner();
-            }
-        }
-
-        async function showTeam(teamId) {
-    showSpinner();
-    try {
-        const response = await fetch(`${API_URL}/druzyna/${teamId}`);
-        if (!response.ok) {
-            throw new Error('Błąd podczas pobierania składu drużyny');
-        }
-        const teamData = await response.json();
+        const response = await fetch(`${API_URL}/zaklady/${currentUser.id}`);
+        const bets = await response.json();
 
         document.getElementById('mainContent').innerHTML = `
             <div class="container">
-                <h2 class="mb-4">Skład drużyny</h2>
-                
-                ${teamData.trener ? `
-                    <div class="card mb-4">
-                        <div class="card-header">
-                            <h5 class="mb-0">Trener</h5>
-                        </div>
-                        <div class="card-body">
-                            <p class="mb-0">
-                                <strong>Imię i nazwisko:</strong> ${teamData.trener.imie} ${teamData.trener.nazwisko}
-                                <br>
-                                <strong>Narodowość:</strong> ${teamData.trener.narodowosc || '-'}
-                            </p>
-                        </div>
-                    </div>
-                ` : ''}
-                
+                <h2 class="mb-4">Twoje zakłady</h2>
                 <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">Podstawowa jedenastka</h5>
-                    </div>
                     <div class="card-body">
                         <div class="table-responsive">
                             <table class="table table-hover">
                                 <thead>
                                     <tr>
-                                        <th>Numer</th>
-                                        <th>Imię i nazwisko</th>
-                                        <th>Pozycja</th>
-                                        <th>Narodowość</th>
+                                        <th>Mecz</th>
+                                        <th>Typ</th>
+                                        <th>Kurs</th>
+                                        <th>Kwota</th>
+                                        <th>Potencjalna wygrana</th>
+                                        <th>Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    ${teamData.zawodnicy.map(player => `
+                                    ${bets.map(bet => `
                                         <tr>
-                                            <td>${player.numer || '-'}</td>
-                                            <td>${player.imie} ${player.nazwisko}</td>
-                                            <td>${player.pozycja || '-'}</td>
-                                            <td>${player.narodowosc || '-'}</td>
+                                            <td>${bet.nazwa_meczu}</td>
+                                            <td>${bet.nazwa_typu}</td>
+                                            <td>${bet.kurs}</td>
+                                            <td>${bet.kwota_postawiona} PLN</td>
+                                            <td>${bet.potencjalna_wygrana} PLN</td>
+                                            <td>${bet.status_meczu}</td>
                                         </tr>
                                     `).join('')}
                                 </tbody>
                             </table>
                         </div>
+                        ${bets.length === 0 ? '<p class="text-center mt-3">Nie masz jeszcze żadnych zakładów</p>' : ''}
                     </div>
                 </div>
-                
-                <button class="btn btn-secondary mt-3" onclick="showMatches()">
-                    Powrót do meczów
-                </button>
             </div>
         `;
     } catch (error) {
-        showToast(error.message, 'danger');
-        console.error('Błąd:', error);
+        showToast('Wystąpił błąd podczas pobierania zakładów', 'danger');
     } finally {
         hideSpinner();
     }
 }
 
-        async function showBetForm(matchId) {
-    // Sprawdzenie czy użytkownik jest zalogowany
+// Pokazywanie listy meczów
+async function showMatches() {
+    showSpinner();
+    try {
+        const response = await fetch(`${API_URL}/mecze`);
+        const matches = await response.json();
+
+        document.getElementById('mainContent').innerHTML = `
+            <div class="container">
+                <h2 class="mb-4">Lista meczów</h2>
+                <div class="mb-3">
+                    <input type="text" class="form-control" id="searchInput" 
+                           placeholder="Wyszukaj mecz...">
+                </div>
+                <div class="row" id="matchesList">
+                    ${matches.map(match => `
+                        <div class="col-md-6 mb-3">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">${match.gospodarz} vs ${match.gosc}</h5>
+                                    <p class="card-text">
+                                        <strong>Data:</strong> ${new Date(match.data_meczu).toLocaleString()}<br>
+                                        <strong>Status:</strong> ${match.status}
+                                    </p>
+                                    <div class="btn-group w-100">
+                                        <button class="btn btn-primary" onclick="showTeam(${match.id_gospodarzy})">
+                                            Skład gospodarzy
+                                        </button>
+                                        <button class="btn btn-info" onclick="showTeam(${match.id_gosci})">
+                                            Skład gości
+                                        </button>
+                                        ${match.status === 'Oczekujący' ? `
+                                            <button class="btn btn-success" onclick="showBetForm(${match.id_meczu})">
+                                                Postaw zakład
+                                            </button>
+                                        ` : ''}
+                                        ${currentUser?.rola === 'Admin' ? `
+                                            <button class="btn btn-warning" onclick="showMatchOddsManagement(${match.id_meczu})">
+                                                Zarządzaj kursami
+                                            </button>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                ${matches.length === 0 ? '<p class="text-center">Brak dostępnych meczów</p>' : ''}
+            </div>
+        `;
+
+        // Dodanie funkcjonalności wyszukiwania
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', function() {
+                const searchText = this.value.toLowerCase();
+                const matchCards = document.getElementsByClassName('col-md-6');
+                
+                Array.from(matchCards).forEach(card => {
+                    const title = card.querySelector('.card-title').textContent.toLowerCase();
+                    card.style.display = title.includes(searchText) ? '' : 'none';
+                });
+            });
+        }
+
+    } catch (error) {
+        showToast('Wystąpił błąd podczas pobierania meczów', 'danger');
+    } finally {
+        hideSpinner();
+    }
+}
+async function showBetForm(matchId) {
     if (!currentUser) {
         showToast('Zaloguj się aby postawić zakład', 'warning');
         showLoginForm();
@@ -325,26 +596,20 @@
 
     showSpinner();
     try {
-        // Pobieranie kursów dla wybranego meczu
-        const oddsResponse = await fetch(`${API_URL}/mecz/${matchId}/kursy`);
-        if (!oddsResponse.ok) {
-            throw new Error('Nie udało się pobrać kursów dla meczu');
-        }
-        const odds = await oddsResponse.json();
+        const response = await fetch(`${API_URL}/mecz/${matchId}/kursy`);
+        const odds = await response.json();
 
         if (!odds || odds.length === 0) {
             showToast('Brak dostępnych kursów dla tego meczu', 'warning');
-            hideSpinner();
             return;
         }
 
-        // Wyświetlenie formularza z kursami
         document.getElementById('mainContent').innerHTML = `
             <div class="container">
                 <h2 class="mb-4">Postaw zakład</h2>
                 <div class="card">
                     <div class="card-body">
-                        <form id="betForm">
+                        <form id="betForm" class="needs-validation" novalidate>
                             <div class="mb-3">
                                 <label for="oddSelect" class="form-label">Wybierz typ zakładu</label>
                                 <select class="form-select" id="oddSelect" required>
@@ -359,13 +624,8 @@
                             <div class="mb-3">
                                 <label for="betAmount" class="form-label">Kwota zakładu</label>
                                 <div class="input-group">
-                                    <input type="number" 
-                                           step="0.01" 
-                                           class="form-control" 
-                                           id="betAmount" 
-                                           min="1" 
-                                           required
-                                           placeholder="Wprowadź kwotę">
+                                    <input type="number" step="0.01" class="form-control" 
+                                           id="betAmount" min="1" required placeholder="Wprowadź kwotę">
                                     <span class="input-group-text">PLN</span>
                                 </div>
                             </div>
@@ -385,50 +645,41 @@
             </div>
         `;
 
-        // Obsługa kalkulacji potencjalnej wygranej
-        const oddSelect = document.getElementById('oddSelect');
+        // Obliczanie potencjalnej wygranej
         const betAmount = document.getElementById('betAmount');
+        const oddSelect = document.getElementById('oddSelect');
         const potentialWin = document.getElementById('potentialWin');
 
         function calculatePotentialWin() {
             const selectedOption = oddSelect.options[oddSelect.selectedIndex];
-            if (selectedOption && selectedOption.value && betAmount.value) {
+            if (selectedOption && selectedOption.value && betAmount.value > 0) {
                 const kurs = parseFloat(selectedOption.dataset.kurs);
                 const kwota = parseFloat(betAmount.value);
-                if (!isNaN(kurs) && !isNaN(kwota) && kwota > 0) {
+                if (!isNaN(kurs) && !isNaN(kwota)) {
                     const wygrana = (kurs * kwota).toFixed(2);
                     potentialWin.textContent = `${wygrana} PLN`;
-                    potentialWin.classList.remove('alert-warning');
-                    potentialWin.classList.add('alert-info');
-                } else {
-                    potentialWin.textContent = 'Wprowadź prawidłową kwotę';
-                    potentialWin.classList.remove('alert-info');
-                    potentialWin.classList.add('alert-warning');
                 }
             } else {
                 potentialWin.textContent = '0.00 PLN';
-                potentialWin.classList.remove('alert-warning');
-                potentialWin.classList.add('alert-info');
             }
         }
 
-        // Dodanie nasłuchiwania zdarzeń dla pól formularza
-        oddSelect.addEventListener('change', calculatePotentialWin);
         betAmount.addEventListener('input', calculatePotentialWin);
+        oddSelect.addEventListener('change', calculatePotentialWin);
 
-        // Obsługa wysyłania formularza
+        // Obsługa formularza zakładu
         document.getElementById('betForm').addEventListener('submit', async (event) => {
             event.preventDefault();
-            const betAmount = document.getElementById('betAmount').value;
-            const selectedOdd = document.getElementById('oddSelect').value;
-            
-            // Walidacja formularza
+
+            const selectedOdd = oddSelect.value;
+            const amount = parseFloat(betAmount.value);
+
             if (!selectedOdd) {
                 showToast('Wybierz typ zakładu', 'warning');
                 return;
             }
 
-            if (!betAmount || parseFloat(betAmount) <= 0) {
+            if (isNaN(amount) || amount <= 0) {
                 showToast('Wprowadź prawidłową kwotę zakładu', 'warning');
                 return;
             }
@@ -443,34 +694,139 @@
                     body: JSON.stringify({
                         id_uzytkownika: currentUser.id,
                         id_kursu: selectedOdd,
-                        kwota_postawiona: betAmount
+                        kwota_postawiona: amount
                     })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (response.ok) {
-                    showToast(data.message, 'success');
-                    // Po udanym postawieniu zakładu wróć do listy meczów
-                    showMatches();
+                    showToast('Zakład został pomyślnie postawiony', 'success');
+                    showBets(); // Przekierowanie do listy zakładów
                 } else {
-                    showToast(data.error || 'Wystąpił błąd podczas stawiania zakładu', 'danger');
+                    throw new Error(data.error || 'Wystąpił błąd podczas stawiania zakładu');
                 }
             } catch (error) {
-                showToast('Wystąpił błąd podczas połączenia z serwerem', 'danger');
-                console.error('Błąd:', error);
+                showToast(error.message, 'danger');
             } finally {
                 hideSpinner();
             }
         });
 
     } catch (error) {
-        showToast(error.message, 'danger');
-        console.error('Błąd:', error);
+        showToast('Wystąpił błąd podczas ładowania kursów', 'danger');
     } finally {
         hideSpinner();
     }
 }
+// Pokazywanie składu drużyny
+async function showTeam(teamId) {
+    showSpinner();
+    try {
+        const response = await fetch(`${API_URL}/druzyna/${teamId}`);
+        const data = await response.json();
+
+        document.getElementById('mainContent').innerHTML = `
+            <div class="container">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h3>Skład drużyny</h3>
+                    </div>
+                    <div class="card-body">
+                        ${data.trener ? `
+                            <div class="mb-4">
+                                <h4>Trener</h4>
+                                <div class="card">
+                                    <div class="card-body">
+                                        <p class="mb-1"><strong>Imię i nazwisko:</strong> ${data.trener.imie} ${data.trener.nazwisko}</p>
+                                        <p class="mb-0"><strong>Data urodzenia:</strong> ${new Date(data.trener.data_urodzenia).toLocaleDateString()}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
+
+                        <h4>Zawodnicy</h4>
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Numer</th>
+                                        <th>Imię i nazwisko</th>
+                                        <th>Pozycja</th>
+                                        <th>Data urodzenia</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.zawodnicy.map(player => `
+                                        <tr>
+                                            <td>${player.numer}</td>
+                                            <td>${player.imie} ${player.nazwisko}</td>
+                                            <td>${player.pozycja}</td>
+                                            <td>${new Date(player.data_urodzenia).toLocaleDateString()}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-secondary" onclick="showMatches()">Powrót do meczów</button>
+            </div>
+        `;
+    } catch (error) {
+        showToast('Wystąpił błąd podczas pobierania składu drużyny', 'danger');
+    } finally {
+        hideSpinner();
+    }
+}
+
+// Panel admina
+async function showAdminPanel() {
+    if (!currentUser || currentUser.rola !== 'Admin') {
+        showToast('Brak dostępu do panelu administratora', 'danger');
+        return;
+    }
+
+    document.getElementById('mainContent').innerHTML = `
+        <div class="container">
+            <h2 class="mb-4">Panel Administratora</h2>
+            <div class="row">
+                <div class="col-md-4 mb-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Zarządzanie użytkownikami</h5>
+                            <button class="btn btn-primary w-100" onclick="showUserManagement()">
+                                Przejdź
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Zarządzanie meczami</h5>
+                            <button class="btn btn-primary w-100" onclick="showMatchManagement()">
+                                Przejdź
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Statystyki systemu</h5>
+                            <button class="btn btn-primary w-100" onclick="showSystemStats()">
+                                Przejdź
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Zarządzanie kursami dla meczu
 async function showMatchOddsManagement(matchId) {
     if (!currentUser || currentUser.rola !== 'Admin') {
         showToast('Brak uprawnień administratora', 'danger');
@@ -479,63 +835,47 @@ async function showMatchOddsManagement(matchId) {
 
     showSpinner();
     try {
-        // Pobierz informacje o meczu
-        const matchResponse = await fetch(`${API_URL}/mecze`);
+        const [matchResponse, oddsResponse] = await Promise.all([
+            fetch(`${API_URL}/mecze`),
+            fetch(`${API_URL}/mecz/${matchId}/kursy`)
+        ]);
+
         const matches = await matchResponse.json();
+        const odds = await oddsResponse.json();
         const match = matches.find(m => m.id_meczu === matchId);
-
-        if (!match) {
-            throw new Error('Nie znaleziono meczu');
-        }
-
-        // Pobierz aktualne kursy
-        const oddsResponse = await fetch(`${API_URL}/mecz/${matchId}/kursy`);
-        const currentOdds = await oddsResponse.json();
 
         document.getElementById('mainContent').innerHTML = `
             <div class="container">
-                <h2 class="mb-4">Zarządzanie kursami</h2>
                 <div class="card mb-4">
                     <div class="card-header">
-                        <h5 class="mb-0">${match.gospodarz} vs ${match.gosc}</h5>
-                        <small class="text-muted">Data meczu: ${match.data_meczu}</small>
+                        <h3>Zarządzanie kursami - ${match.gospodarz} vs ${match.gosc}</h3>
+                        <p class="mb-0">Data meczu: ${new Date(match.data_meczu).toLocaleString()}</p>
                     </div>
                     <div class="card-body">
-                        <!-- Formularz dodawania nowego kursu -->
                         <form id="addOddForm" class="mb-4">
-                            <h5>Dodaj nowy kurs</h5>
+                            <h4>Dodaj nowy kurs</h4>
                             <div class="row g-3">
                                 <div class="col-md-6">
-                                    <label for="oddType" class="form-label">Typ zakładu</label>
                                     <select class="form-select" id="oddType" required>
-                                        <option value="">Wybierz typ zakładu...</option>
-                                        <option value="Wygrana gospodarzy">Wygrana gospodarzy</option>
+                                        <option value="">Wybierz typ zakładu</option>
+                                        <option value="Zwycięstwo gospodarzy">Zwycięstwo gospodarzy</option>
                                         <option value="Remis">Remis</option>
-                                        <option value="Wygrana gości">Wygrana gości</option>
-                                        <option value="Poniżej 2.5 goli">Poniżej 2.5 goli</option>
-                                        <option value="Powyżej 2.5 goli">Powyżej 2.5 goli</option>
-                                        <option value="Obie drużyny strzelą">Obie drużyny strzelą</option>
-                                        <option value="custom">Własny typ...</option>
+                                        <option value="Zwycięstwo gości">Zwycięstwo gości</option>
                                     </select>
-                                    <input type="text" class="form-control mt-2" id="customOddType" 
-                                           style="display: none;" placeholder="Wprowadź własny typ zakładu">
                                 </div>
                                 <div class="col-md-4">
-                                    <label for="oddValue" class="form-label">Wartość kursu</label>
-                                    <input type="number" step="0.01" min="1.01" class="form-control" 
-                                           id="oddValue" required>
+                                    <input type="number" class="form-control" id="oddValue" 
+                                           step="0.01" min="1.01" placeholder="Kurs" required>
                                 </div>
                                 <div class="col-md-2">
-                                    <label class="form-label">&nbsp;</label>
                                     <button type="submit" class="btn btn-primary w-100">Dodaj</button>
                                 </div>
                             </div>
                         </form>
 
-                        <!-- Lista aktualnych kursów -->
-                        <h5>Aktualne kursy</h5>
+                        <h4>Aktualne kursy</h4>
                         <div class="table-responsive">
-                            <table class="table table-hover" id="oddsTable">
+                            <table class="table table-hover">
                                 <thead>
                                     <tr>
                                         <th>Typ zakładu</th>
@@ -545,25 +885,22 @@ async function showMatchOddsManagement(matchId) {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    ${currentOdds.map(odd => `
-                                        <tr data-odd-id="${odd.id}">
+                                    ${odds.map(odd => `
+                                        <tr>
                                             <td>${odd.nazwa_typu}</td>
                                             <td>
                                                 <span class="odd-value">${odd.kurs}</span>
-                                                <input type="number" step="0.01" min="1.01" 
-                                                       class="form-control edit-odd-value" 
-                                                       style="display: none;" value="${odd.kurs}">
+                                                <input type="number" class="form-control edit-value" 
+                                                       value="${odd.kurs}" style="display: none;">
                                             </td>
                                             <td>${odd.status ? 'Aktywny' : 'Nieaktywny'}</td>
                                             <td>
-                                                <button class="btn btn-sm btn-warning edit-odd-btn">
+                                                <button class="btn btn-sm btn-warning edit-btn" 
+                                                        onclick="editOdd(this, ${matchId}, ${odd.id})">
                                                     Edytuj
                                                 </button>
-                                                <button class="btn btn-sm btn-success save-odd-btn" 
-                                                        style="display: none;">
-                                                    Zapisz
-                                                </button>
-                                                <button class="btn btn-sm btn-danger deactivate-odd-btn">
+                                                <button class="btn btn-sm btn-danger" 
+                                                        onclick="deactivateOdd(${matchId}, ${odd.id})">
                                                     Dezaktywuj
                                                 </button>
                                             </td>
@@ -574,34 +911,16 @@ async function showMatchOddsManagement(matchId) {
                         </div>
                     </div>
                 </div>
-                <button class="btn btn-secondary" onclick="showMatches()">
-                    Powrót do listy meczów
-                </button>
+                <button class="btn btn-secondary" onclick="showMatches()">Powrót do meczów</button>
             </div>
         `;
 
-        // Obsługa własnego typu zakładu
-        const oddTypeSelect = document.getElementById('oddType');
-        const customOddTypeInput = document.getElementById('customOddType');
-
-        oddTypeSelect.addEventListener('change', (e) => {
-            if (e.target.value === 'custom') {
-                customOddTypeInput.style.display = 'block';
-                customOddTypeInput.required = true;
-            } else {
-                customOddTypeInput.style.display = 'none';
-                customOddTypeInput.required = false;
-            }
-        });
-
-        // Dodawanie nowego kursu
-        document.getElementById('addOddForm').addEventListener('submit', async (event) => {
-            event.preventDefault();
-            const oddType = oddTypeSelect.value === 'custom' ? 
-                          customOddTypeInput.value : oddTypeSelect.value;
-            const oddValue = document.getElementById('oddValue').value;
-
-            showSpinner();
+        // Obsługa formularza dodawania kursu
+        document.getElementById('addOddForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const type = document.getElementById('oddType').value;
+            const value = document.getElementById('oddValue').value;
+            
             try {
                 const response = await fetch(`${API_URL}/mecz/${matchId}/kursy`, {
                     method: 'POST',
@@ -609,367 +928,148 @@ async function showMatchOddsManagement(matchId) {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        nazwa_typu: oddType,
-                        kurs: parseFloat(oddValue)
+                        nazwa_typu: type,
+                        kurs: parseFloat(value)
                     })
                 });
 
                 const data = await response.json();
                 if (response.ok) {
-                    showToast('Kurs został dodany pomyślnie', 'success');
-                    // Odśwież widok
+                    showToast('Kurs został dodany', 'success');
                     showMatchOddsManagement(matchId);
                 } else {
-                    throw new Error(data.error || 'Wystąpił błąd podczas dodawania kursu');
+                    throw new Error(data.error);
                 }
             } catch (error) {
                 showToast(error.message, 'danger');
-            } finally {
-                hideSpinner();
             }
         });
 
-        // Obsługa edycji kursów
-        document.querySelectorAll('.edit-odd-btn').forEach(button => {
-            button.addEventListener('click', (e) => {
-                const row = e.target.closest('tr');
-                row.querySelector('.odd-value').style.display = 'none';
-                row.querySelector('.edit-odd-value').style.display = 'block';
-                row.querySelector('.edit-odd-btn').style.display = 'none';
-                row.querySelector('.save-odd-btn').style.display = 'inline-block';
-            });
-        });
-
-        // Obsługa zapisywania zmian
-        document.querySelectorAll('.save-odd-btn').forEach(button => {
-            button.addEventListener('click', async (e) => {
-                const row = e.target.closest('tr');
-                const oddId = row.dataset.oddId;
-                const newValue = row.querySelector('.edit-odd-value').value;
-
-                showSpinner();
-                try {
-                    const response = await fetch(`${API_URL}/mecz/${matchId}/kursy/${oddId}`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            kurs: parseFloat(newValue)
-                        })
-                    });
-
-                    const data = await response.json();
-                    if (response.ok) {
-                        showToast('Kurs został zaktualizowany', 'success');
-                        // Odśwież widok
-                        showMatchOddsManagement(matchId);
-                    } else {
-                        throw new Error(data.error || 'Wystąpił błąd podczas aktualizacji kursu');
-                    }
-                } catch (error) {
-                    showToast(error.message, 'danger');
-                } finally {
-                    hideSpinner();
-                }
-            });
-        });
-
-        // Obsługa dezaktywacji kursów
-        document.querySelectorAll('.deactivate-odd-btn').forEach(button => {
-            button.addEventListener('click', async (e) => {
-                if (!confirm('Czy na pewno chcesz dezaktywować ten kurs?')) {
-                    return;
-                }
-
-                const row = e.target.closest('tr');
-                const oddId = row.dataset.oddId;
-
-                showSpinner();
-                try {
-                    const response = await fetch(`${API_URL}/mecz/${matchId}/kursy/${oddId}`, {
-                        method: 'DELETE'
-                    });
-
-                    const data = await response.json();
-                    if (response.ok) {
-                        showToast('Kurs został dezaktywowany', 'success');
-                        // Odśwież widok
-                        showMatchOddsManagement(matchId);
-                    } else {
-                        throw new Error(data.error || 'Wystąpił błąd podczas dezaktywacji kursu');
-                    }
-                } catch (error) {
-                    showToast(error.message, 'danger');
-                } finally {
-                    hideSpinner();
-                }
-            });
-        });
-
     } catch (error) {
-        showToast(error.message, 'danger');
-        console.error('Błąd:', error);
+        showToast('Wystąpił błąd podczas ładowania danych', 'danger');
     } finally {
         hideSpinner();
     }
 }
-async function searchMatches(query) {
-    try {
-        const response = await fetch(`${API_URL}/konto/find_match?search=${encodeURIComponent(query)}`);
-        if (!response.ok) {
-            throw new Error('Błąd podczas wyszukiwania meczów');
-        }
-        return await response.json();
-    } catch (error) {
-        console.error('Błąd:', error);
-        return [];
-    }
-}
 
-// Zmodyfikowana funkcja panelu admina
-async function showAdminPanel() {
-    if (!currentUser || currentUser.rola !== 'Admin') {
-        showToast('Brak uprawnień administratora', 'danger');
-        return;
-    }
-
-    document.getElementById('mainContent').innerHTML = `
-        <div class="container">
-            <h2 class="mb-4">Panel Administratora</h2>
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Dodawanie kursów</h5>
-                </div>
-                <div class="card-body">
-                    <form id="addOddForm">
-                        <div class="mb-3">
-                            <label for="matchSearch" class="form-label">Wyszukaj mecz</label>
-                            <div class="input-group">
-                                <input type="text" 
-                                       class="form-control" 
-                                       id="matchSearch" 
-                                       placeholder="Wpisz nazwę drużyny..."
-                                       autocomplete="off">
-                            </div>
-                            <div id="matchesList" class="list-group mt-2" style="display:none;"></div>
-                        </div>
-                        <div id="selectedMatchInfo" class="alert alert-info mb-3" style="display:none;">
-                            <h6>Wybrany mecz:</h6>
-                            <p id="selectedMatchDetails"></p>
-                        </div>
-                        <div id="oddFormFields" style="display:none;">
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <label for="oddType" class="form-label">Typ zakładu</label>
-                                    <select class="form-select" id="oddType" required>
-                                        <option value="">Wybierz typ zakładu...</option>
-                                        <option value="Wygrana gospodarzy">Wygrana gospodarzy</option>
-                                        <option value="Remis">Remis</option>
-                                        <option value="Wygrana gości">Wygrana gości</option>
-                                        <option value="Poniżej 2.5 goli">Poniżej 2.5 goli</option>
-                                        <option value="Powyżej 2.5 goli">Powyżej 2.5 goli</option>
-                                        <option value="Obie drużyny strzelą">Obie drużyny strzelą</option>
-                                        <option value="custom">Własny typ...</option>
-                                    </select>
-                                    <input type="text" 
-                                           class="form-control mt-2" 
-                                           id="customOddType" 
-                                           style="display:none;" 
-                                           placeholder="Wprowadź własny typ zakładu">
-                                </div>
-                                <div class="col-md-4">
-                                    <label for="oddValue" class="form-label">Wartość kursu</label>
-                                    <input type="number" 
-                                           step="0.01" 
-                                           min="1.01" 
-                                           class="form-control" 
-                                           id="oddValue" 
-                                           required>
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">&nbsp;</label>
-                                    <button type="submit" class="btn btn-primary w-100">Dodaj kurs</button>
-                                </div>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    `;
-
-    let selectedMatchId = null;
-    const matchSearch = document.getElementById('matchSearch');
-    const matchesList = document.getElementById('matchesList');
-    const selectedMatchInfo = document.getElementById('selectedMatchInfo');
-    const selectedMatchDetails = document.getElementById('selectedMatchDetails');
-    const oddFormFields = document.getElementById('oddFormFields');
-
-    // Obsługa wyszukiwania meczów
-    let searchTimeout;
-    matchSearch.addEventListener('input', (e) => {
-        clearTimeout(searchTimeout);
-        const query = e.target.value;
-
-        if (query.length < 2) {
-            matchesList.style.display = 'none';
-            return;
-        }
-
-        searchTimeout = setTimeout(async () => {
-            const matches = await searchMatches(query);
-            if (matches.length > 0) {
-                matchesList.innerHTML = matches.map(match => `
-                    <button type="button" 
-                            class="list-group-item list-group-item-action" 
-                            data-match-id="${match.id_meczu}"
-                            data-match-details="${match.gospodarz} vs ${match.gosc} (${match.data_meczu})">
-                        ${match.gospodarz} vs ${match.gosc} - ${match.data_meczu}
-                    </button>
-                `).join('');
-                matchesList.style.display = 'block';
-            } else {
-                matchesList.innerHTML = '<div class="list-group-item">Nie znaleziono meczów</div>';
-                matchesList.style.display = 'block';
-            }
-        }, 300);
-    });
-
-    // Obsługa wyboru meczu
-    matchesList.addEventListener('click', (e) => {
-        if (e.target.tagName === 'BUTTON') {
-            selectedMatchId = e.target.dataset.matchId;
-            const matchDetails = e.target.dataset.matchDetails;
-            matchSearch.value = matchDetails;
-            matchesList.style.display = 'none';
-            selectedMatchInfo.style.display = 'block';
-            selectedMatchDetails.textContent = matchDetails;
-            oddFormFields.style.display = 'block';
-        }
-    });
-
-    // Obsługa własnego typu zakładu
-    const oddTypeSelect = document.getElementById('oddType');
-    const customOddTypeInput = document.getElementById('customOddType');
+// Edycja kursu
+async function editOdd(button, matchId, oddId) {
+    const row = button.closest('tr');
+    const valueSpan = row.querySelector('.odd-value');
+    const valueInput = row.querySelector('.edit-value');
     
-    oddTypeSelect.addEventListener('change', (e) => {
-        if (e.target.value === 'custom') {
-            customOddTypeInput.style.display = 'block';
-            customOddTypeInput.required = true;
-        } else {
-            customOddTypeInput.style.display = 'none';
-            customOddTypeInput.required = false;
-        }
-    });
-
-    // Obsługa dodawania kursu
-    document.getElementById('addOddForm').addEventListener('submit', async (event) => {
-        event.preventDefault();
-        
-        if (!selectedMatchId) {
-            showToast('Wybierz mecz', 'warning');
-            return;
-        }
-
-        const oddType = oddTypeSelect.value === 'custom' ? 
-                       customOddTypeInput.value : 
-                       oddTypeSelect.value;
-        const oddValue = document.getElementById('oddValue').value;
-
-        showSpinner();
+    if (valueInput.style.display === 'none') {
+        // Tryb edycji
+        valueSpan.style.display = 'none';
+        valueInput.style.display = 'block';
+        button.textContent = 'Zapisz';
+    } else {
+        // Zapisywanie zmian
         try {
-            const response = await fetch(`${API_URL}/mecz/${selectedMatchId}/kursy`, {
-                method: 'POST',
+            const newValue = parseFloat(valueInput.value);
+            
+            // Walidacja wartości
+            if (isNaN(newValue) || newValue <= 1) {
+                showToast('Kurs musi być większy niż 1', 'danger');
+                return;
+            }
+
+            showSpinner();
+            
+            const response = await fetch(`${API_URL}/mecz/${matchId}/kursy/${oddId}`, {
+                method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    nazwa_typu: oddType,
-                    kurs: parseFloat(oddValue)
+                    kurs: newValue,
+                    id_meczu: matchId,
+                    id_kursu: oddId
                 })
             });
 
             const data = await response.json();
+
             if (response.ok) {
-                showToast('Kurs został dodany pomyślnie', 'success');
-                // Wyczyść formularz
-                event.target.reset();
-                selectedMatchId = null;
-                selectedMatchInfo.style.display = 'none';
-                oddFormFields.style.display = 'none';
-                matchSearch.value = '';
+                showToast('Kurs został zaktualizowany', 'success');
+                // Odśwież widok kursów
+                showMatchOddsManagement(matchId);
             } else {
-                throw new Error(data.error || 'Wystąpił błąd podczas dodawania kursu');
+                throw new Error(data.error || 'Nie udało się zaktualizować kursu');
             }
         } catch (error) {
             showToast(error.message, 'danger');
         } finally {
             hideSpinner();
         }
-    });
+    }
 }
-        
-        async function login(event) {
-            event.preventDefault();
-            const nazwa = document.getElementById('loginNazwa').value;
-            const haslo = document.getElementById('loginHaslo').value;
 
-            showSpinner();
-            try {
-                const response = await fetch(`${API_URL}/login`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ nazwa, haslo })
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    currentUser = data.user;
-                    showToast(data.message, 'success');
-                    document.getElementById('adminNavItem').style.display = currentUser.rola === 'Admin' ? 'block' : 'none';
-                    showProfile();
-                } else {
-                    showToast(data.error, 'danger');
-                }
-            } catch (error) {
-                showToast(error.message, 'danger');
-            } finally {
-                hideSpinner();
-            }
+// Dezaktywacja kursu
+async function deactivateOdd(matchId, oddId) {
+    if (!confirm('Czy na pewno chcesz dezaktywować ten kurs?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/mecz/${matchId}/kursy/${oddId}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            showToast('Kurs został dezaktywowany', 'success');
+            showMatchOddsManagement(matchId);
+        } else {
+            throw new Error('Nie udało się dezaktywować kursu');
         }
+    } catch (error) {
+        showToast(error.message, 'danger');
+    }
+}
 
-        function showLoginForm() {
-            document.getElementById('mainContent').innerHTML = `
-                <h2>Logowanie</h2>
-                <form id="loginForm">
-                    <div class="mb-3">
-                        <label for="loginNazwa" class="form-label">Nazwa użytkownika</label>
-                        <input type="text" class="form-control" id="loginNazwa" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="loginHaslo" class="form-label">Hasło</label>
-                        <input type="password" class="form-control" id="loginHaslo" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary">Zaloguj</button>
-                </form>
+        // Pomocnicze funkcje UI
+        function showToast(message, type) {
+            const toastContainer = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast align-items-center text-bg-${type} border-0`;
+            toast.setAttribute('role', 'alert');
+            toast.setAttribute('aria-live', 'assertive');
+            toast.setAttribute('aria-atomic', 'true');
+            
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" 
+                            data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
             `;
+            
+            toastContainer.appendChild(toast);
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
 
-            document.getElementById('loginForm').addEventListener('submit', login);
+            toast.addEventListener('hidden.bs.toast', () => {
+                toast.remove();
+            });
         }
 
-        function logout() {
-            currentUser = null;
-            document.getElementById('adminNavItem').style.display = 'none';
-            showToast('Wylogowano pomyślnie', 'success');
-            showLoginForm();
+        function showSpinner() {
+            document.getElementById('loadingSpinner').style.display = 'block';
         }
 
+        function hideSpinner() {
+            document.getElementById('loadingSpinner').style.display = 'none';
+        }
+
+        // Inicjalizacja aplikacji
         document.addEventListener('DOMContentLoaded', () => {
+            handleEmailVerification();
             showLoginForm();
+            updateNavigation();
         });
     </script>
+    
+    <!-- Bootstrap Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
