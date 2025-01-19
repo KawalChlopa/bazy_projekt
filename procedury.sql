@@ -569,73 +569,6 @@ BEGIN
     ORDER BY z.numer_koszulki ASC;
 END//
 
--- Procedura do dodawania zawodnika
-CREATE PROCEDURE dodaj_zawodnika(
-    IN p_id_druzyny INT,
-    IN p_imie VARCHAR(50),
-    IN p_nazwisko VARCHAR(50),
-    IN p_pozycja VARCHAR(255),
-    IN p_data_urodzenia DATETIME,
-    IN p_numer_koszulki INT
-)
-BEGIN
-    INSERT INTO Zawodnicy (
-        id_druzyny,
-        imie,
-        nazwisko,
-        pozycja,
-        data_urodzenia,
-        numer_koszulki
-    ) VALUES (
-        p_id_druzyny,
-        p_imie,
-        p_nazwisko,
-        p_pozycja,
-        p_data_urodzenia,
-        p_numer_koszulki
-    );
-END//
-
-BEGIN
-    DECLARE v_id_meczu BIGINT;
-    DECLARE done INT DEFAULT FALSE;
-    
-
-    DECLARE cur_mecze CURSOR FOR
-        SELECT id_meczu 
-        FROM Mecz 
-        WHERE status = 'Oczekujący' 
-        AND data_meczu <= NOW();
-        
-    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
-    
-
-    START TRANSACTION;
-    
-    OPEN cur_mecze;
-    
-    read_loop: LOOP
-        FETCH cur_mecze INTO v_id_meczu;
-        
-        IF done THEN
-            LEAVE read_loop;
-        END IF;
-        
-       
-        UPDATE Kursy_Meczu 
-        SET status = FALSE 
-        WHERE id_meczu = v_id_meczu 
-        AND status = TRUE;
-        
-    
-        CALL rozlicz_mecz(v_id_meczu);
-        
-    END LOOP;
-    
-    CLOSE cur_mecze;
-    
-    COMMIT;
-END //
 
 DROP EVENT IF EXISTS sprawdz_status_meczu//
 
@@ -707,5 +640,43 @@ BEGIN
     SELECT 'Kurs został pomyślnie dezaktywowany' AS message;
     
 END//
+DELIMITER //
 
+CREATE PROCEDURE aktualizuj_status_meczu()
+BEGIN
+    DECLARE v_id_meczu BIGINT;
+    DECLARE done INT DEFAULT FALSE;
+    
+    DECLARE cur_mecze CURSOR FOR
+        SELECT id_meczu 
+        FROM Mecz 
+        WHERE status = 'Oczekujący' 
+        AND data_meczu <= NOW();
+        
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+    
+    START TRANSACTION;
+    
+    OPEN cur_mecze;
+    
+    read_loop: LOOP
+        FETCH cur_mecze INTO v_id_meczu;
+        
+        IF done THEN
+            LEAVE read_loop;
+        END IF;
+        
+        UPDATE Kursy_Meczu 
+        SET status = FALSE 
+        WHERE id_meczu = v_id_meczu 
+        AND status = TRUE;
+        
+        CALL rozlicz_mecz(v_id_meczu);
+        
+    END LOOP;
+    
+    CLOSE cur_mecze;
+    
+    COMMIT;
+END//
 DELIMITER ;
