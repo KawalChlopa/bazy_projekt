@@ -727,6 +727,27 @@ def druzyna(druzyna_id):
     finally:
         cursor.close()
         conn.close()
+    
+@app.route("/api/konto/<int:id_uzytkownika>", methods=['PUT'])
+def update_user_role(id_uzytkownika):
+    try:
+        dane = request.json
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE Uzytkownik 
+            SET rola = %s 
+            WHERE id_uzytkownika = %s
+        """, (dane['rola'], id_uzytkownika))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({'message': 'Rola użytkownika została zaktualizowana'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == "__main__":

@@ -1026,6 +1026,230 @@ async function deactivateOdd(matchId, oddId) {
         showToast(error.message, 'danger');
     }
 }
+async function showUserManagement() {
+    if (!currentUser || currentUser.rola !== 'Admin') {
+        showToast('Brak dostępu do panelu administratora', 'danger');
+        return;
+    }
+
+    showSpinner();
+    try {
+        const response = await fetch(`${API_URL}/konto`);
+        const users = await response.json();
+
+        document.getElementById('mainContent').innerHTML = `
+            <div class="container">
+                <h2 class="mb-4">Zarządzanie Użytkownikami</h2>
+                <div class="card">
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Nazwa</th>
+                                        <th>Email</th>
+                                        <th>Rola</th>
+                                        <th>Status</th>
+                                        <th>Balans</th>
+                                        <th>Akcje</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${users.map(user => `
+                                        <tr>
+                                            <td>${user.id_uzytkownika}</td>
+                                            <td>${user.nazwa}</td>
+                                            <td>${user.email}</td>
+                                            <td>
+                                                <select class="form-select form-select-sm" 
+                                                        onchange="changeUserRole(${user.id_uzytkownika}, this.value)">
+                                                    <option value="Uzytkownik" ${user.rola === 'Uzytkownik' ? 'selected' : ''}>
+                                                        Użytkownik
+                                                    </option>
+                                                    <option value="Admin" ${user.rola === 'Admin' ? 'selected' : ''}>
+                                                        Administrator
+                                                    </option>
+                                                </select>
+                                            </td>
+                                            <td>${user.status_weryfikacji ? 'Zweryfikowany' : 'Niezweryfikowany'}</td>
+                                            <td>${user.balans} PLN</td>
+                                            <td>
+                                                <button class="btn btn-sm btn-danger" 
+                                                        onclick="deleteUserAsAdmin(${user.id_uzytkownika})">
+                                                    Usuń
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-secondary mt-3" onclick="showAdminPanel()">
+                    Powrót do panelu admina
+                </button>
+            </div>
+        `;
+    } catch (error) {
+        showToast('Wystąpił błąd podczas ładowania użytkowników', 'danger');
+    } finally {
+        hideSpinner();
+    }
+}
+
+// Funkcja do usuwania użytkownika przez admina
+async function deleteUserAsAdmin(userId) {
+    if (!confirm('Czy na pewno chcesz usunąć tego użytkownika?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/konto/${userId}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            showToast('Użytkownik został usunięty', 'success');
+            showUserManagement(); // Odśwież listę
+        } else {
+            throw new Error('Nie udało się usunąć użytkownika');
+        }
+    } catch (error) {
+        showToast(error.message, 'danger');
+    }
+}
+
+// Funkcja do zmiany roli użytkownika
+async function changeUserRole(userId, newRole) {
+    try {
+        const response = await fetch(`${API_URL}/konto/${userId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                rola: newRole
+            })
+        });
+
+        if (response.ok) {
+            showToast('Rola użytkownika została zmieniona', 'success');
+        } else {
+            throw new Error('Nie udało się zmienić roli użytkownika');
+        }
+    } catch (error) {
+        showToast(error.message, 'danger');
+    }
+}
+
+// Pokazywanie statystyk systemu
+async function showSystemStats() {
+    if (!currentUser || currentUser.rola !== 'Admin') {
+        showToast('Brak dostępu do panelu administratora', 'danger');
+        return;
+    }
+
+    document.getElementById('mainContent').innerHTML = `
+        <div class="container">
+            <h2 class="mb-4">Statystyki Systemu</h2>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Aktywni użytkownicy</h5>
+                            <p class="card-text">Ładowanie...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Zakłady dzisiaj</h5>
+                            <p class="card-text">Ładowanie...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Obrót dzienny</h5>
+                            <p class="card-text">Ładowanie...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-secondary mt-3" onclick="showAdminPanel()">
+                Powrót do panelu admina
+            </button>
+        </div>
+    `;
+
+    // Tu możesz dodać kod do ładowania rzeczywistych statystyk
+}
+
+// Zarządzanie meczami
+async function showMatchManagement() {
+    if (!currentUser || currentUser.rola !== 'Admin') {
+        showToast('Brak dostępu do panelu administratora', 'danger');
+        return;
+    }
+
+    showSpinner();
+    try {
+        const response = await fetch(`${API_URL}/mecze`);
+        const matches = await response.json();
+
+        document.getElementById('mainContent').innerHTML = `
+            <div class="container">
+                <h2 class="mb-4">Zarządzanie Meczami</h2>
+                <div class="card">
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Gospodarz</th>
+                                        <th>Gość</th>
+                                        <th>Data</th>
+                                        <th>Status</th>
+                                        <th>Akcje</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${matches.map(match => `
+                                        <tr>
+                                            <td>${match.id_meczu}</td>
+                                            <td>${match.gospodarz}</td>
+                                            <td>${match.gosc}</td>
+                                            <td>${new Date(match.data_meczu).toLocaleString()}</td>
+                                            <td>${match.status}</td>
+                                            <td>
+                                                <button class="btn btn-sm btn-warning" 
+                                                        onclick="showMatchOddsManagement(${match.id_meczu})">
+                                                    Zarządzaj kursami
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-secondary mt-3" onclick="showAdminPanel()">
+                    Powrót do panelu admina
+                </button>
+            </div>
+        `;
+    } catch (error) {
+        showToast('Wystąpił błąd podczas ładowania meczów', 'danger');
+    } finally {
+        hideSpinner();
+    }
+}
 
         // Pomocnicze funkcje UI
         function showToast(message, type) {
