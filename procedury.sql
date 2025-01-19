@@ -581,7 +581,7 @@ BEGIN
     CALL aktualizuj_status_meczu();
 END //
 
-CREATE PROCEDURE dezaktualizuj_kurs(
+CREATE PROCEDURE dezaktywuj_kurs(
     IN p_id_meczu INT,
     IN p_id_kursu INT
 )
