@@ -244,7 +244,7 @@
                     showToast(data.error || 'Błąd logowania', 'danger');
                 }
             } catch (error) {
-                showToast('Wystąpił błąd podczas łączenia z serwerem', 'danger');
+                showToast('Wystąpił błąd podczas łączenia z serwerem!', 'danger');
             } finally {
                 hideSpinner();
             }
@@ -254,7 +254,7 @@
         function logout() {
             currentUser = null;
             updateNavigation();
-            showToast('Wylogowano pomyślnie', 'success');
+            showToast('Wylogowano pomyślnie.', 'success');
             showLoginForm();
         }
 
