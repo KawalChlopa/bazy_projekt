@@ -108,3 +108,4 @@ ALTER TABLE
     `Zaklad` ADD CONSTRAINT `zaklad_kurs_meczu_foreign` FOREIGN KEY(`kurs_meczu`) REFERENCES `Kursy_Meczu`(`id`);
 
 
+
