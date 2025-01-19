@@ -106,3 +106,5 @@ ALTER TABLE
     `Księgowość` ADD CONSTRAINT `księgowość_id_użytkownika_foreign` FOREIGN KEY(`id_użytkownika`) REFERENCES `Użytkownik`(`id_użytkownika`);
 ALTER TABLE
     `Zakład` ADD CONSTRAINT `zakład_kurs_meczu_foreign` FOREIGN KEY(`kurs_meczu`) REFERENCES `Kursy_Meczu`(`id`);
+
+#hello
