@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   mysql:
-    image: bazy_obraz
+    image: glakowski/bazy_obraz:latest
     container_name: bazy_kontner
     ports:
       - "3306:3306"
