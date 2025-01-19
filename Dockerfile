@@ -5,7 +5,8 @@ ENV MYSQL_DATABASE=Bukmacher
 ENV MYSQL_USER=gabrys
 ENV MYSQL_PASSWORD=bazy123
 
-COPY init.sql /docker-entrypoint-initdb.d/
+COPY init.sql /docker-entrypoint-initdb.d/01-init.sql
+COPY procedury.sql /docker-entrypoint-initdb.d/02-procedury.sql
 
 EXPOSE 3306
 
