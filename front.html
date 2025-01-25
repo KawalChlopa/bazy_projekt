@@ -205,6 +205,9 @@
                                                 onclick="showRegistrationForm()">
                                             Utwórz nowe konto
                                         </button>
+                                        <button type="button" class="btn btn-outline-secondary w-100" onclick="showResetPasswordForm()">
+                                            Zapomniałeś hasła?
+                                        </button>
                                     </div>
                                 </form>
                             </div>
@@ -258,6 +261,65 @@
             showLoginForm();
         }
 
+        //reset hasła
+        function showResetPasswordForm() {
+    document.getElementById('mainContent').innerHTML = `
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Reset hasła</h3>
+                    </div>
+                    <div class="card-body">
+                        <form id="resetPasswordForm">
+                            <div class="mb-3">
+                                <label class="form-label">Nazwa użytkownika</label>
+                                <input type="text" class="form-control" id="resetUsername" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Nowe hasło</label>
+                                <input type="password" class="form-control" id="newPassword" required minlength="6">
+                            </div>
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-primary">Reset hasła</button>
+                                <button type="button" class="btn btn-secondary" onclick="showLoginForm()">Powrót</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('resetPasswordForm').addEventListener('submit', handleResetPassword);
+}
+
+async function handleResetPassword(event) {
+    event.preventDefault();
+    const nazwa = document.getElementById('resetUsername').value;
+    const newPassword = document.getElementById('newPassword').value;
+
+    showSpinner();
+    try {
+        const response = await fetch(`${API_URL}/konto/reset_password`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ nazwa, new_password: newPassword })
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            showToast('Hasło zostało zmienione', 'success');
+            showLoginForm();
+        } else {
+            throw new Error(data.error);
+        }
+    } catch (error) {
+        showToast(error.message, 'danger');
+    } finally {
+        hideSpinner();
+    }
+}
         // Potwierdzenie usunięcia konta
         function confirmDeleteAccount() {
             const modal = document.createElement('div');
