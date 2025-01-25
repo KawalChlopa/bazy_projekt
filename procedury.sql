@@ -1,6 +1,6 @@
-DELIMITER //
-
 -- PROCEDURY
+DELIMITER //
+DROP PROCEDURE IF EXISTS aktualizacja_statusu_weryfikacji//
 CREATE PROCEDURE aktualizacja_statusu_weryfikacji (
     IN p_email VARCHAR(255)
 )
@@ -10,6 +10,7 @@ BEGIN
     WHERE email = p_email;
 END//
 
+DROP PROCEDURE IF EXISTS dodaj_kurs//
 CREATE PROCEDURE dodaj_kurs (
     IN p_id_meczu INT,
     IN p_nazwa_typu VARCHAR(255),
@@ -99,6 +100,8 @@ BEGIN
     WHERE k.id = p_id_kursu;
 END//
 
+DROP PROCEDURE IF EXISTS dodaj_transakcje//
+
 CREATE PROCEDURE dodaj_transakcje (
     IN p_id_uzytkownika INT,
     IN p_kwota DECIMAL(10, 2),
@@ -135,6 +138,7 @@ START TRANSACTION;
 
 END//
 
+DROP PROCEDURE IF EXISTS postaw_zaklad//
 CREATE PROCEDURE postaw_zaklad (
     IN p_id_uzytkownika INT,
     IN p_id_kursu INT,
@@ -248,16 +252,25 @@ BEGIN
     COMMIT;
 END//
 
+DROP PROCEDURE IF EXISTS reset_hasla//
 CREATE PROCEDURE reset_hasla (
     IN p_nazwa VARCHAR(255),
     IN p_new_password VARCHAR(255)
 )
 BEGIN
+        IF p_nazwa IS NULL OR p_nazwa = '' OR p_new_password IS NULL OR LENGTH(p_new_password) < 8 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Nieprawidłowe dane wejściowe';
+    END IF;
+
+    IF p_nazwa REGEXP '[^a-zA-Z0-9_]' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Niedozwolone znaki w nazwie';
+    END IF;
     UPDATE Uzytkownik 
     SET haslo = p_new_password 
     WHERE nazwa = p_nazwa;
 END//
 
+DROP PROCEDURE IF EXISTS rozlicz_mecz//
 CREATE PROCEDURE rozlicz_mecz (
     IN p_id_meczu INT
 )
@@ -343,6 +356,7 @@ BEGIN
     COMMIT;
 END//
 
+DROP PROCEDURE IF EXISTS tworzenie_uzytkownika//
 CREATE PROCEDURE tworzenie_uzytkownika (
     IN p_nazwa VARCHAR(255),
     IN p_haslo VARCHAR(255),
@@ -352,11 +366,23 @@ CREATE PROCEDURE tworzenie_uzytkownika (
     IN p_status_weryfikacji BOOLEAN
 )
 BEGIN
+        IF p_nazwa REGEXP '[^a-zA-Z0-9_]' OR LENGTH(p_nazwa) < 3 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Nieprawidłowa nazwa użytkownika';
+    END IF;
+
+    IF p_email NOT REGEXP '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Nieprawidłowy email';
+    END IF;
+
+    IF p_rola NOT IN ('Uzytkownik', 'Administrator', 'Moderator') THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Nieprawidłowa rola';
+    END IF;
     INSERT INTO Uzytkownik (nazwa, haslo, email, balans, data_utworzenia, rola, status_weryfikacji)
     VALUES (p_nazwa, p_haslo, p_email, p_balans, NOW(), p_rola, p_status_weryfikacji);
     SELECT LAST_INSERT_ID() as id_uzytkownika;
 END//
 
+DROP PROCEDURE IF EXISTS usun_uzytkownika//
 CREATE PROCEDURE usun_uzytkownika (
     IN p_id_uzytkownika INT
 )
@@ -365,6 +391,7 @@ BEGIN
     WHERE id_uzytkownika = p_id_uzytkownika;
 END//
 
+DROP PROCEDURE IF EXISTS aktualizuj_kurs//
 CREATE PROCEDURE aktualizuj_kurs (
     IN p_mecz_id INT,
     IN p_kurs_id INT,
@@ -383,10 +410,18 @@ BEGIN
     END IF;
 END//
 
+DROP PROCEDURE IF EXISTS znajdz_mecz//
 CREATE PROCEDURE znajdz_mecz (
     IN p_search_query VARCHAR(255)
 )
 BEGIN
+        IF p_search_query IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Puste zapytanie';
+    END IF;
+
+    IF p_search_query != 'all' AND p_search_query REGEXP '[^a-zA-Z0-9 ]' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Niedozwolone znaki w zapytaniu';
+    END IF;
     SELECT DISTINCT
         m.id_meczu,
         dg.nazwa AS gospodarz,
@@ -406,11 +441,13 @@ DELIMITER ;
 
 -- WIDOKI
 
+DROP VIEW IF EXISTS aktywne_kursy;
 CREATE VIEW aktywne_kursy AS
 SELECT `km`.`id` AS `id`, `km`.`id_meczu` AS `id_meczu`, `km`.`nazwa_typu` AS `nazwa_typu`, `km`.`kurs` AS `kurs`, `km`.`status` AS `status`, `km`.`data_utworzenia` AS `data_utworzenia` 
 FROM `Bukmacher`.`Kursy_Meczu` `km` 
 WHERE (`km`.`status` = TRUE);
 
+DROP VIEW IF EXISTS statystyki_uzytkownika;
 CREATE VIEW statystyki_uzytkownika AS
 SELECT `Bukmacher`.`Zaklad`.`id_uzytkownika` AS `id_uzytkownika`, 
        COUNT(CASE WHEN (`Bukmacher`.`Zaklad`.`wynik` = TRUE) THEN 1 END) AS `wygrane_zaklady`, 
@@ -423,6 +460,7 @@ FROM `Bukmacher`.`Zaklad`
 WHERE (`Bukmacher`.`Zaklad`.`status_zakladu` IN ('Wygrany','Przegrany')) 
 GROUP BY `Bukmacher`.`Zaklad`.`id_uzytkownika`;
 
+DROP VIEW IF EXISTS szczegoly_meczu;
 CREATE VIEW szczegoly_meczu AS
 SELECT `m`.`id_meczu` AS `id_meczu`, 
        `dg`.`nazwa` AS `gospodarz`, 
@@ -435,6 +473,7 @@ FROM ((`Bukmacher`.`Mecz` `m`
 JOIN `Bukmacher`.`Druzyny` `dg` ON((`m`.`id_gospodarzy` = `dg`.`id_druzyny`))) 
 JOIN `Bukmacher`.`Druzyny` `dgos` ON((`m`.`id_gosci` = `dgos`.`id_druzyny`)));
 
+DROP VIEW IF EXISTS uzytkownik_historia_balansu;
 CREATE VIEW uzytkownik_historia_balansu AS
 SELECT `hs`.`id_uzytkownika` AS `id_uzytkownika`, 
        `hs`.`zmiana_balansu` AS `zmiana_balansu`, 
@@ -445,6 +484,7 @@ SELECT `hs`.`id_uzytkownika` AS `id_uzytkownika`,
 FROM (`Bukmacher`.`Historia_Salda` `hs` 
 JOIN `Bukmacher`.`Transakcje` `t` ON((`hs`.`id_transakcji` = `t`.`id`)));
 
+DROP VIEW IF EXISTS uzytkownik_szczegoly;
 CREATE VIEW uzytkownik_szczegoly AS
 SELECT `Bukmacher`.`Uzytkownik`.`id_uzytkownika` AS `id_uzytkownika`, 
        `Bukmacher`.`Uzytkownik`.`nazwa` AS `nazwa`, 
@@ -456,6 +496,7 @@ SELECT `Bukmacher`.`Uzytkownik`.`id_uzytkownika` AS `id_uzytkownika`,
        `Bukmacher`.`Uzytkownik`.`status_weryfikacji` AS `status_weryfikacji` 
 FROM `Bukmacher`.`Uzytkownik`;
 
+DROP VIEW IF EXISTS widok_uzytkownik_transakcje;
 CREATE VIEW widok_uzytkownik_transakcje AS
 SELECT `k`.`id_uzytkownika` AS `id_uzytkownika`, 
        `t`.`typ_operacji` AS `typ_operacji`, 
@@ -466,6 +507,7 @@ JOIN `Bukmacher`.`Ksiegowosc` `k` ON((`t`.`id` = `k`.`id_transakcji`)))
 GROUP BY `k`.`id_uzytkownika`, `t`.`typ_operacji`;
 
 -- Widok dla składu drużyny
+DROP VIEW IF EXISTS sklad_druzyny;
 CREATE VIEW sklad_druzyny AS
 SELECT 
     z.id_zawodnika,
@@ -482,6 +524,7 @@ SELECT
 FROM Zawodnicy z
 JOIN Druzyny d ON z.id_druzyny = d.id_druzyny;
 
+DROP VIEW IF EXISTS podstawowa_jedenastka;
 -- Widok dla podstawowej jedenastki
 CREATE VIEW podstawowa_jedenastka AS
 SELECT 
@@ -507,6 +550,7 @@ ORDER BY
 
 DELIMITER //
 
+DROP PROCEDURE IF EXISTS dodaj_zdarzenie_meczu//
 CREATE PROCEDURE dodaj_zdarzenie_meczu(
     IN p_id_zawodnika INT,
     IN p_id_meczu INT,
@@ -530,6 +574,7 @@ BEGIN
     );
 END//
 
+DROP PROCEDURE IF EXISTS pobierz_zdarzenia_meczu//
 CREATE PROCEDURE pobierz_zdarzenia_meczu(
     IN p_id_meczu INT
 )
@@ -539,6 +584,7 @@ BEGIN
     ORDER BY czas_zdarzenia;
 END//
 
+DROP PROCEDURE IF EXISTS pobierz_sklad_druzyny//
 CREATE PROCEDURE pobierz_sklad_druzyny(
     IN p_id_druzyny INT
 )
@@ -581,6 +627,7 @@ BEGIN
     CALL aktualizuj_status_meczu();
 END //
 
+DROP PROCEDURE IF EXISTS dezaktywuj_kurs//
 CREATE PROCEDURE dezaktywuj_kurs(
     IN p_id_meczu INT,
     IN p_id_kursu INT
@@ -642,6 +689,7 @@ BEGIN
 END//
 DELIMITER //
 
+DROP PROCEDURE IF EXISTS aktualizuj_status_meczu//
 CREATE PROCEDURE aktualizuj_status_meczu()
 BEGIN
     DECLARE v_id_meczu BIGINT;
