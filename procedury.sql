@@ -293,7 +293,7 @@ BEGIN
     
     START TRANSACTION;
     
-    -- Pobierz wynik meczu
+    
     SELECT gole_gospodarzy, gole_gosci 
     INTO v_gole_gospodarzy, v_gole_gosci
     FROM Mecz 
@@ -308,7 +308,7 @@ BEGIN
             LEAVE read_loop;
         END IF;
         
-        -- Sprawdź czy zakład wygrał
+        
         SET @wygrany = CASE
             WHEN v_nazwa_typu = 'zwycięstwo gospodarzy' AND v_gole_gospodarzy > v_gole_gosci THEN TRUE
             WHEN v_nazwa_typu = 'remis' AND v_gole_gospodarzy = v_gole_gosci THEN TRUE
@@ -316,13 +316,13 @@ BEGIN
             ELSE FALSE
         END;
         
-        -- Aktualizuj status zakładu
+        
         UPDATE Zaklad 
         SET status_zakladu = IF(@wygrany, 'Wygrany', 'Przegrany'),
             wynik = @wygrany
         WHERE id_zakladu = v_id_zakladu;
         
-        -- Jeśli wygrany, wypłać wygraną
+        
         IF @wygrany THEN
             SELECT balans INTO v_current_balance
             FROM Uzytkownik
@@ -346,7 +346,7 @@ BEGIN
     
     CLOSE cur_zaklady;
     
-    -- Zaktualizuj status meczu
+    
     UPDATE Mecz 
     SET status = 'Zakończony',
         zwyciestwo_gospodarzy = v_gole_gospodarzy > v_gole_gosci,
