@@ -199,7 +199,7 @@ def verify_account(token):
         cursor.close()
         conn.close()
 
-        return jsonify({'message': 'Konto zostało pomyślnie zweryfikowane'}), 200
+        return jsonify({'message': 'Konto zostalo pomyslnie zweryfikowane'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
